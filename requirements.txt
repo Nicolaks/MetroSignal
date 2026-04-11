@@ -1,0 +1,16 @@
+pandas
+duckdb
+requests
+pydantic
+prefect
+lightgbm
+shap
+scikit-learn
+fastapi
+uvicorn
+streamlit
+plotly
+python-dotenv
+holidays
+pyarrow
+dotenv
