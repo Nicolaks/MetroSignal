@@ -218,6 +218,7 @@ __marimo__/
 
 data/*.csv
 data/raw/*.csv
+data/raw
 data/*.parquet
 data/*.duckdb
 .env
