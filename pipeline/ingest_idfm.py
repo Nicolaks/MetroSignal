@@ -244,7 +244,7 @@ if __name__== "__main__":
     con = duckdb.connect(str(DB_PATH))
     
     #con.execute("DROP TABLE IF EXISTS validations")
-    for annee in [2024, 2023, 2022]:
+    for annee in [2024, 2023, 2022, 2021, 2020, 2019,2018, 2017, 2016]:
         df = run(annee=annee)
         
     print(con.execute("""
