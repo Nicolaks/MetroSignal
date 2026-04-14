@@ -6,7 +6,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 #Configuration
-RAW_DIR = Path("data/raw/data-rf-2024")
+RAW_DIR = Path("data/raw")
 DB_PATH = Path("data/warehouse.duckdb")
 
 COLUMN_MAP = {
@@ -23,10 +23,32 @@ COLUMN_MAP = {
 def load_csv(path: Path) -> pd.DataFrame:
     logger.info("Lecture du fichier %s ....", path.name)
     
-    df = pd.read_csv(path, sep="\t", encoding="latin-1", low_memory=False)
+    for encoding in ["latin-1", "utf-16", "utf-8", 'utf-16-le', 'utf-16-be']:
+        for sep in ["\t", ";", ","]:
+            try:
+                df = pd.read_csv(path, sep=sep, encoding=encoding, low_memory=False)
+                df.columns = [c.replace("\ufeff", "").strip() for c in df.columns]
+                
+                if "JOUR" in df.columns:
+                    logger.info("Encodage détecté : %s", encoding)
+                    break
+            except Exception:
+                continue
+        else:
+            continue
+        break
+    else:
+        raise ValueError(f"Impossible de lire {path.name} avec les encodages testés")
+    
     df = df.rename(columns=COLUMN_MAP)
     df = df[[col for col in COLUMN_MAP.values() if col in df.columns]]
-    df["date"] = pd.to_datetime(df["date"], format="%d/%m/%Y", errors="coerce")
+    df["code_arret"] = (
+        df["code_arret"]
+        .astype(str)
+        .str.strip()
+        .replace(["ND", "NaN", "None", ""], None)
+    )
+    df["date"] = pd.to_datetime(df["date"], format="mixed", dayfirst=True, errors="coerce")
     df["nb_vald"] = (
         df["nb_vald"]
         .astype(str)
@@ -44,10 +66,37 @@ def load_csv(path: Path) -> pd.DataFrame:
 def load_profil(path: Path) -> pd.DataFrame:
     logger.info("Lecture du profil horaire %s ...", path.name)
     
-    df = pd.read_csv(path, sep="\t", encoding="latin-1", low_memory=False)
+    df = None
     
+    for encoding in ["latin-1", "utf-8", "utf-8-sig", "utf-16", "utf-16-le"]:
+        for sep in [";", "\t", ","]:
+            try:
+                df = pd.read_csv(path, sep=sep, encoding=encoding, low_memory=False)
+                df.columns = (df.columns.str.replace("\ufeff", "", regex=False).str.strip())
+            
+                if "TRNC_HORR_60" in df.columns:
+                    logger.info("Profil OK (encoding=%s, sep=%s)", encoding, sep)
+                    break
+            
+            except Exception:
+                continue
+        if df is not None and "TRNC_HORR_60" in df.columns:
+            break
+        
+    if df is None or "TRNC_HORR_60" not in df.columns:
+        raise ValueError(f"Impossible de lire le profil {path.name}")
+    
+    time_col = next(
+        (c for c in ["TRNC_HORR_60", "TRNC_HORAIRE", "HEURE"] if c in df.columns),
+        None
+    )
+    
+    if time_col is None:
+        raise ValueError(f"Aucunne colonne horaire trouvée: {df.columns}")
+                
     df["heure"] = (
-        df["TRNC_HORR_60"]
+        df[time_col]
+        .astype(str)
         .str.extract(r"^(\d+)H")
         .squeeze()
         .pipe(pd.to_numeric, errors="coerce")
@@ -61,9 +110,18 @@ def load_profil(path: Path) -> pd.DataFrame:
         "CODE_STIF_ARRET": "code_arret",
         "LIBELLE_ARRET": "station",
         "ID_ZDC": "id_zdc",
+        "ID_REFA_LDA" : "id_zdc",
         "CAT_JOUR": "cat_jour",
-        "pourc_validations": "pct_validations",
+        "pourc_validations": "pct_validations", # format S1/S2 et avant 2024
+        "Pourcentage_validations": "pct_validations", # format T3/T4 2024
     })
+    
+    df["code_arret"] = (
+        df["code_arret"]
+        .astype(str)
+        .str.strip()
+        .replace(["ND", "NaN", "None", ""], None)
+    )
     
     df["pct_validations"] = (
         df["pct_validations"]
@@ -71,9 +129,9 @@ def load_profil(path: Path) -> pd.DataFrame:
         .str.replace(",", ".", regex=False)  # au cas où format français
         .pipe(pd.to_numeric, errors="coerce")
 )
-    
+
     df = df[["code_arret", "cat_jour", "heure", "pct_validations"]]
-    
+    logger.info("Colonnes profil détectées: %s", list(df.columns))
     logger.info("Profil chargé : %d lignes", len(df))
     return df
 
@@ -130,30 +188,69 @@ def aggregate_by_station_hour(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Agrégé : %d lignes, %d stations uniques", len(df_agg), df_agg["station"].nunique())
     return df_agg
 
-def load_to_duckdb(df: pd.DataFrame, db_path: Path) -> None:
+def load_to_duckdb(df: pd.DataFrame, db_path: Path, annee: int) -> None:
     logger.info("Chargement dans DuckDB -> %s ...", db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     
     con = duckdb.connect(str(db_path))
-    con.execute("DROP TABLE IF EXISTS validations")
-    con.execute("CREATE TABLE validations AS SELECT * FROM df")
-    count = con.execute("SELECT COUNT(*) FROM validations").fetchone()[0]
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS validations (
+            date DATE,
+            heure INTEGER,
+            station VARCHAR,
+            code_arret VARCHAR,
+            jour_semaine INTEGER,
+            semaine_annee INTEGER,
+            mois INTEGER,
+            annee INTEGER,
+            is_weekend INTEGER,
+            nb_vald_heure INTEGER
+            )
+        """)
+    
+    con.execute(f"DELETE FROM validations WHERE annee = {annee}")
+    con.execute("INSERT INTO validations SELECT * FROM df")
+    
+    count = con.execute(f"SELECT COUNT(*) FROM validations WHERE annee = {annee}").fetchone()[0]
+    total = con.execute("SELECT COUNT(*) FROM validations").fetchone()[0]
     con.close()
     
-    logger.info("✅ Table 'validations' : %d lignes chargées", count)
+    logger.info("✅ Année %d : %d lignes | Total BDD : %d lignes", annee, count, total)
 
-def run(raw_dir: Path = RAW_DIR, db_path: Path = DB_PATH) -> pd.DataFrame:
-    df_nb = load_csv(raw_dir / "2024_S1_NB_FER.txt")
-    df_nb = add_time_features(df_nb)
-    df_profil = load_profil(raw_dir / "2024_S1_PROFIL_FER.txt")
-    df_merged = merge_nb_profil(df_nb, df_profil)
-    df_final = aggregate_by_station_hour(df_merged)
-    load_to_duckdb(df_final, db_path)
+def run(annee: int, raw_dir: Path = RAW_DIR, db_path: Path = DB_PATH) -> pd.DataFrame:
+    dossier = raw_dir / f"data-rf-{annee}"
+    fichiers_nb = sorted(dossier.glob("*_NB_FER*.txt"))
+    fichiers_profil = sorted(dossier.glob("*PROFIL_FER*.txt"))
+    
+    if not fichiers_nb:
+        raise FileNotFoundError(f"Aucun fichier NB_FER trouvé dans {dossier}")
+    
+    frames = []
+    for nb_path, profil_path in zip(fichiers_nb, fichiers_profil):
+        df_nb = load_csv(nb_path)
+        df_nb = add_time_features(df_nb)
+        df_profil = load_profil(profil_path)
+        df_merged = merge_nb_profil(df_nb, df_profil)
+        frames.append(aggregate_by_station_hour(df_merged))
+        
+    df_final = pd.concat(frames, ignore_index=True)
+    load_to_duckdb(df_final, db_path, annee)
     return df_final
 
 if __name__== "__main__":
+    
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    df = run()
+    
     con = duckdb.connect(str(DB_PATH))
-    print(con.execute("SELECT station, heure, nb_vald_heure FROM validations LIMIT 5").df())
+    
+    #con.execute("DROP TABLE IF EXISTS validations")
+    for annee in [2024, 2023, 2022]:
+        df = run(annee=annee)
+        
+    print(con.execute("""
+                      SELECT annee, COUNT(*) as nb_lignes
+                      FROM validations
+                      GROUP BY annee
+                      ORDER BY annee
+                      """).df())
     con.close()
