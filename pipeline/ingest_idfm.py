@@ -45,6 +45,7 @@ def load_csv(path: Path) -> pd.DataFrame:
     df["code_arret"] = (
         df["code_arret"]
         .astype(str)
+        .str.replace(r"\.0$", "", regex=True)
         .str.strip()
         .replace(["ND", "NaN", "None", ""], None)
     )
@@ -119,6 +120,7 @@ def load_profil(path: Path) -> pd.DataFrame:
     df["code_arret"] = (
         df["code_arret"]
         .astype(str)
+        .str.replace(r"\.0$", "", regex=True)
         .str.strip()
         .replace(["ND", "NaN", "None", ""], None)
     )
@@ -219,22 +221,50 @@ def load_to_duckdb(df: pd.DataFrame, db_path: Path, annee: int) -> None:
 
 def run(annee: int, raw_dir: Path = RAW_DIR, db_path: Path = DB_PATH) -> pd.DataFrame:
     dossier = raw_dir / f"data-rf-{annee}"
-    fichiers_nb = sorted(dossier.glob("*_NB_FER*.txt"))
-    fichiers_profil = sorted(dossier.glob("*PROFIL_FER*.txt"))
+    
+    if annee == 2025:
+        fichiers_nb = sorted(dossier.glob("*nombre-validations*.csv"))
+        fichiers_profil = sorted(dossier.glob("*profils-horaires*.csv"))
+        
+    else:
+        fichiers_nb = sorted(
+            list(dossier.glob("*NB_FER*"))
+        )
+        
+        fichiers_profil = sorted(
+            list(dossier.glob("*PROFIL_FER*"))
+        )
     
     if not fichiers_nb:
         raise FileNotFoundError(f"Aucun fichier NB_FER trouvé dans {dossier}")
     
     frames = []
-    for nb_path, profil_path in zip(fichiers_nb, fichiers_profil):
-        df_nb = load_csv(nb_path)
-        df_nb = add_time_features(df_nb)
-        df_profil = load_profil(profil_path)
-        df_merged = merge_nb_profil(df_nb, df_profil)
-        frames.append(aggregate_by_station_hour(df_merged))
+    
+    if fichiers_profil:
+        for nb_path, profil_path in zip(fichiers_nb, fichiers_profil):
+            df_nb = load_csv(nb_path)
+            df_nb = add_time_features(df_nb)
+            
+            df_profil = load_profil(profil_path)
+            
+            df_merged = merge_nb_profil(df_nb, df_profil)
+            frames.append(aggregate_by_station_hour(df_merged))
+    else:
+        logger.warning(f"Aucun profil trouvé pour {annee} -> fallback journalier")
+        
+        for nb_path in fichiers_nb:
+            df_nb = load_csv(nb_path)
+            df_nb = add_time_features(df_nb)
+            
+            df_nb["heure"] = 0
+            df_nb["nb_vald_heure"] = df_nb["nb_vald"]
+            
+            frames.append(aggregate_by_station_hour(df_nb))
+        
         
     df_final = pd.concat(frames, ignore_index=True)
     load_to_duckdb(df_final, db_path, annee)
+    
     return df_final
 
 if __name__== "__main__":
@@ -244,7 +274,7 @@ if __name__== "__main__":
     con = duckdb.connect(str(DB_PATH))
     
     #con.execute("DROP TABLE IF EXISTS validations")
-    for annee in [2024, 2023, 2022, 2021, 2020, 2019,2018, 2017, 2016]:
+    for annee in [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]:
         df = run(annee=annee)
         
     print(con.execute("""
