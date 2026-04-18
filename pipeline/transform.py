@@ -57,13 +57,14 @@ def build_jours_feries_set(years: list) -> set:
 def compute_taux_congestion(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Calcul du taux de congestion ...")
     
+    # Attente d'occupation normale sur la station à telle heure tel jours
     baseline = (
         df.groupby(["station", "jour_semaine", "heure"])["nb_vald_heure"]
         .mean()
         .rename("baseline_mean")
         .reset_index()
     )
-    
+    # Pareil mais avec l'écart-type pour mesurer la variablité du créneau dans le temps    
     std = (
         df.groupby(["station", "jour_semaine", "heure"])["nb_vald_heure"]
         .std()
@@ -76,6 +77,8 @@ def compute_taux_congestion(df: pd.DataFrame) -> pd.DataFrame:
     
     # Taux de congestion : écart à la moyenne normalisé par l'écart-type
     # Si std = 0 (station toujours au même niveau), taux = 0
+    # Si taux = +2 : station chargée
+    # Si taux = -2 : anormalement vide
     df["taux_congestion"] = (
         (df["nb_vald_heure"] - df["baseline_mean"])
         / df["baseline_std"].replace(0,1)
@@ -90,8 +93,8 @@ def compute_station_stats(df: pd.DataFrame) -> pd.DataFrame:
     station_stats = (
         df.groupby("station")["nb_vald_heure"]
         .agg(
-            variance_historique="var",
-            volume_moyen="mean",
+            variance_historique="var", # A quel point le trafic de cette station fluctue. Une station avec forte variance est imprévisible
+            volume_moyen="mean", # Le trafic moyen toutes heures confondues
         )
         .reset_index()
     )
