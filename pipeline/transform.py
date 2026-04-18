@@ -87,6 +87,35 @@ def compute_taux_congestion(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Taux de congestion calculé")
     return df
 
+def detect_greve(df: pd.DataFrame) -> pd.DataFrame:
+    logger.info("Détection des jours de grève ...")
+    
+    total_stations = (
+        df.groupby("date")["station"]
+        .nunique()
+        .rename("total_stations")
+        .reset_index()
+    )
+    
+    stations_affectees = (
+        df[df["taux_congestion"] < -1.5]
+        .groupby("date")["station"]
+        .nunique()
+        .rename("stations_affectees")
+        .reset_index()
+    )
+    
+    greve = total_stations.merge(stations_affectees, on="date", how="left")
+    greve["stations_affectees"] = greve["stations_affectees"].fillna(0)
+    greve["pct_affectees"] = greve["stations_affectees"] / greve["total_stations"]
+    greve["is_greve"] = (greve["pct_affectees"] >= 0.30).astype(int)
+    
+    df = df.merge(greve[["date", "is_greve"]], on="date", how="left")
+    
+    nb_jours_greve = greve["is_greve"].sum()
+    logger.info("✅ %d jours de grève détectés", nb_jours_greve)
+    return df
+
 def compute_station_stats(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Calcul variance historique et rang station ...")
     
@@ -155,6 +184,7 @@ def run(db_path: Path = DB_PATH) -> pd.DataFrame:
     feries_set = build_jours_feries_set(years)
     
     df = compute_taux_congestion(df)
+    df = detect_greve(df)
     df = compute_station_stats(df)
     df = join_weather(df, con)
     df = join_events(df, con)
