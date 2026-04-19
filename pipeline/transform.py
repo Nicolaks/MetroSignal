@@ -98,7 +98,7 @@ def detect_greve(df: pd.DataFrame) -> pd.DataFrame:
     )
     
     stations_affectees = (
-        df[df["taux_congestion"] < -1.5]
+        df[df["taux_congestion"] < -1.55]
         .groupby("date")["station"]
         .nunique()
         .rename("stations_affectees")
@@ -108,7 +108,7 @@ def detect_greve(df: pd.DataFrame) -> pd.DataFrame:
     greve = total_stations.merge(stations_affectees, on="date", how="left")
     greve["stations_affectees"] = greve["stations_affectees"].fillna(0)
     greve["pct_affectees"] = greve["stations_affectees"] / greve["total_stations"]
-    greve["is_greve"] = (greve["pct_affectees"] >= 0.30).astype(int)
+    greve["is_greve"] = (greve["pct_affectees"] >= 0.50).astype(int)
     
     df = df.merge(greve[["date", "is_greve"]], on="date", how="left")
     
