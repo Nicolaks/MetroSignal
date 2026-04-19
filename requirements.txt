@@ -14,4 +14,4 @@ ipykernel
 python-dotenv
 holidays
 pyarrow
-dotenv
+nbformat
