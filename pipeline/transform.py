@@ -120,12 +120,13 @@ def compute_station_stats(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Calcul variance historique et rang station ...")
     
     station_stats = (
-        df.groupby("station")["nb_vald_heure"]
+        df.groupby("station")["taux_congestion"]
         .agg(
             variance_historique="var", # A quel point le trafic de cette station fluctue. Une station avec forte variance est imprévisible
             volume_moyen="mean", # Le trafic moyen toutes heures confondues
         )
         .reset_index()
+        .dropna(subset={"volume_moyen"})
     )
     
     station_stats["rang_station"] = (
