@@ -140,7 +140,6 @@ def load_profil(path: Path) -> pd.DataFrame:
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame :
     logger.info("Ajout des features temporelles ...")
     
-    df["heure"] = df["date"].dt.hour
     df["jour_semaine"] = df["date"].dt.dayofweek
     df["semaine_annee"] = df["date"].dt.isocalendar().week.astype(int)
     df["mois"] = df["date"].dt.month
@@ -165,7 +164,7 @@ def merge_nb_profil(df_nb: pd.DataFrame, df_profil: pd.DataFrame) -> pd.DataFram
     
     df = df_nb.merge(
         df_profil,
-        on=["code_arret", "cat_jour", "heure"],
+        on=["code_arret", "cat_jour"],
         how="left"
     )
     
