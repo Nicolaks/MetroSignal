@@ -10,6 +10,7 @@ fastapi
 uvicorn
 streamlit
 plotly
+ipykernel
 python-dotenv
 holidays
 pyarrow
