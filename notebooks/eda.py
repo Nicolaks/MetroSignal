@@ -1,13 +1,8 @@
-"""
-MetroSignal — EDA
-Toutes les agrégations sont faites en SQL DuckDB.
-Les figures sont exportées en PNG dans outputs/eda/
-"""
-
 import duckdb
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 from plotly.subplots import make_subplots
 from pathlib import Path
 import logging
@@ -36,13 +31,11 @@ LAYOUT_BASE = dict(
     margin=dict(l=60, r=40, t=60, b=60),
 )
 
+figures = []
+
 def save(fig: go.Figure, name: str, height: int = 600) -> None:
-    fig.update_layout(height=height)
-    path = OUTPUT_DIR / f"{name}.png"
-    fig.write_image(str(path), width=1400, height=height, scale=2)
-    logger.info("✅ %s", path)
-    #fig.update_layout(height=height)
-    #fig.show()
+    fig.update_layout(height=height, title_text=f"{fig.layout.title.text}")
+    figures.append(fig)
 
 
 # ── Connexion ─────────────────────────────────────────────────────────────────
@@ -492,6 +485,11 @@ profils = con.execute(f"""
 """).df()
 
 fig = go.Figure()
+FILLS = {
+    COLOR_ACCENT: "rgba(255, 107, 107, 0.15)",
+    COLOR_PRIMARY: "rgba(0, 212, 255, 0.15)",
+}
+
 for station, color in [(station_imprev, COLOR_ACCENT), (station_stable, COLOR_PRIMARY)]:
     sub = profils[profils["station"] == station]
     label = f"🎲 {station}" if station == station_imprev else f"📏 {station}"
@@ -506,7 +504,7 @@ for station, color in [(station_imprev, COLOR_ACCENT), (station_stable, COLOR_PR
         x=list(sub["heure"]) + list(sub["heure"])[::-1],
         y=list(upper) + list(lower)[::-1],
         fill="toself",
-        fillcolor=color + "26",
+        fillcolor=FILLS[color],  # ← rgba valide
         line=dict(width=0), showlegend=False, hoverinfo="skip",
     ))
 fig.update_layout(
@@ -560,7 +558,25 @@ for _, row in feature_corr.iterrows():
     sign = "+" if row["correlation"] > 0 else "-"
     logger.info("  %-25s  %s%s %.3f", row["feature"], sign, bar, row["correlation"])
 
-
 # ── Fin ───────────────────────────────────────────────────────────────────────
 con.close()
 logger.info("=== EDA terminée — figures dans %s ===", OUTPUT_DIR)
+
+html_parts = [pio.to_html(f, full_html=False, include_plotlyjs="cdn") for f in figures]
+html = f"""
+<html>
+<head><meta charset="utf-8"><title>MetroSignal EDA</title>
+<style>body {{ background: {COLOR_BG}; }} </style>
+</head>
+<body>
+{"".join(html_parts)}
+</body>
+</html>
+"""
+output_path = Path("outputs/eda/eda_report.html")
+output_path.parent.mkdir(parents=True, exist_ok=True)
+output_path.write_text(html, encoding="utf-8")
+logger.info("✅ Rapport EDA : %s", output_path)
+
+import webbrowser
+webbrowser.open(str(output_path.resolve()))
