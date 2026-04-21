@@ -61,6 +61,9 @@ def load_csv(path: Path) -> pd.DataFrame:
     
     df = df.dropna(subset=["date", "station"])
     
+    str_cols = df.select_dtypes(include="object").columns
+    df[str_cols] = df[str_cols].apply(lambda col: col.str.strip())
+    
     logger.info("Chargé : %d lignes, %d stations uniques", len(df), df["station"].nunique())
     return df
 
@@ -162,6 +165,14 @@ def merge_nb_profil(df_nb: pd.DataFrame, df_profil: pd.DataFrame) -> pd.DataFram
         
     df_nb["cat_jour"] = df_nb.apply(get_cat_jour, axis=1)
     
+    df_nb = (
+        df_nb.groupby(
+            ["code_arret", "station", "date", "cat_jour", "jour_semaine", "semaine_annee", "mois", "annee", "is_weekend"],
+            as_index=False
+        )
+        .agg(nb_vald=("nb_vald", "sum"))
+    )
+    
     df = df_nb.merge(
         df_profil,
         on=["code_arret", "cat_jour"],
@@ -169,7 +180,6 @@ def merge_nb_profil(df_nb: pd.DataFrame, df_profil: pd.DataFrame) -> pd.DataFram
     )
     
     df["pct_validations"] = df["pct_validations"].fillna(0)
-    
     df["nb_vald_heure"] = (
         df["nb_vald"].astype(float) * df["pct_validations"] / 100
     ).round().astype(int)
@@ -181,9 +191,8 @@ def aggregate_by_station_hour(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Agrégation par station / jour / heure ...")
     
     df_agg = (
-        df.groupby(["date", "heure", "station", "code_arret", "jour_semaine", "semaine_annee", "mois", "annee", "is_weekend"])
-        .agg(nb_vald_heure=("nb_vald_heure", "sum"))
-        .reset_index()
+        df.groupby(["date", "heure", "code_arret", "jour_semaine", "semaine_annee", "mois", "annee", "is_weekend"], as_index=False)
+        .agg(nb_vald_heure=("nb_vald_heure", "sum"), station=("station", "first"))
     )
     
     logger.info("Agrégé : %d lignes, %d stations uniques", len(df_agg), df_agg["station"].nunique())
@@ -192,6 +201,10 @@ def aggregate_by_station_hour(df: pd.DataFrame) -> pd.DataFrame:
 def load_to_duckdb(df: pd.DataFrame, db_path: Path, annee: int) -> None:
     logger.info("Chargement dans DuckDB -> %s ...", db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    COLS = ["date", "heure", "station", "code_arret", "jour_semaine", "semaine_annee", "mois", "annee", "is_weekend", "nb_vald_heure"]
+    
+    df = df[COLS]
     
     con = duckdb.connect(str(db_path))
     con.execute("""
@@ -242,26 +255,35 @@ def run(annee: int, raw_dir: Path = RAW_DIR, db_path: Path = DB_PATH) -> pd.Data
     if fichiers_profil:
         for nb_path, profil_path in zip(fichiers_nb, fichiers_profil):
             df_nb = load_csv(nb_path)
-            df_nb = add_time_features(df_nb)
-            
+            df_nb = add_time_features(df_nb)  
             df_profil = load_profil(profil_path)
-            
             df_merged = merge_nb_profil(df_nb, df_profil)
-            frames.append(aggregate_by_station_hour(df_merged))
+            frames.append(df_merged)
     else:
         logger.warning(f"Aucun profil trouvé pour {annee} -> fallback journalier")
         
         for nb_path in fichiers_nb:
             df_nb = load_csv(nb_path)
             df_nb = add_time_features(df_nb)
-            
             df_nb["heure"] = 0
             df_nb["nb_vald_heure"] = df_nb["nb_vald"]
-            
-            frames.append(aggregate_by_station_hour(df_nb))
+            frames.append(df_nb)
         
         
     df_final = pd.concat(frames, ignore_index=True)
+    
+    nom_canonique = (
+        df_final.groupby("code_arret")["station"]
+        .apply(lambda x: max(x.dropna(), key=len) if x.notna().any() else None)
+        .reset_index()
+        .rename(columns={"station": "station_canon"})
+    )
+    df_final = df_final.merge(nom_canonique, on="code_arret", how="left")
+    df_final["station"] = df_final["station_canon"]
+    df_final = df_final.drop(columns=["station_canon"])
+    
+    df_final = aggregate_by_station_hour(df_final)
+    
     load_to_duckdb(df_final, db_path, annee)
     
     return df_final
