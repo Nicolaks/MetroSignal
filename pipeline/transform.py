@@ -180,6 +180,31 @@ def run(db_path: Path = DB_PATH) -> pd.DataFrame:
     df = con.execute("SELECT * FROM validations").df()
     df["date"] = pd.to_datetime(df["date"]).dt.date
     
+    logger.info("Normalisation des noms de stations ...")
+    nom_canonique = (
+        df.groupby("code_arret")["station"]
+        .apply(lambda x: max(x.dropna(), key=len) if x.notna().any() else None)
+        .reset_index()
+        .rename(columns={"station": "station_canon"})
+    )
+    df = df.merge(nom_canonique, on="code_arret", how="left")
+    df["station"] = df["station_canon"]
+    df = df.drop(columns=["station_canon"])
+    logger.info("Stations normalisées : %d noms canoniques", df["station"].nunique())
+    
+    logger.info("Agrégation par (station, date, heure) ...")
+    df = (
+        df.groupby(
+            ["station", "date", "heure",
+             "jour_semaine", "semaine_annee", "mois", "annee", "is_weekend"],
+            as_index=False
+        )
+        .agg(nb_vald_heure=("nb_vald_heure", "sum"))
+    )
+    logger.info("Après agrégation : %d lignes, %d stations",
+                len(df), df["station"].nunique())
+
+    
     years = list(range(2015, 2026))
     vacances_set = build_vacances_set(ZONES_VACANCES)
     feries_set = build_jours_feries_set(years)
