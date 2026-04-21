@@ -311,7 +311,10 @@ station_corr = con.execute("""
         CORR(precip_mm, taux_congestion)  AS r_precip,
         CORR(temp, taux_congestion)       AS r_temp,
         CORR(wind_kmh, taux_congestion)   AS r_wind,
-        CORR(heure, taux_congestion)      AS r_heure,
+        GREATEST(
+            ABS(CORR(heure_sin, taux_congestion)),
+            ABS(CORR(heure_cos, taux_congestion))
+        )                                 AS r_heure,
         COUNT(*)                          AS n_obs
     FROM dataset_enrichi
     WHERE precip_mm IS NOT NULL AND taux_congestion IS NOT NULL
@@ -479,10 +482,10 @@ profils = con.execute(f"""
            AVG(nb_vald_heure) AS mean_vald,
            STDDEV(nb_vald_heure) AS std_vald
     FROM dataset_enrichi
-    WHERE station IN ('{station_imprev}', '{station_stable}')
+    WHERE station IN (?, ?)
     GROUP BY station, heure
     ORDER BY station, heure
-""").df()
+""", [station_imprev, station_stable]).df()
 
 fig = go.Figure()
 FILLS = {
@@ -524,8 +527,14 @@ logger.info("=== 6. Synthèse ===")
 feature_corr = con.execute("""
     SELECT
         CORR(heure,                 taux_congestion) AS heure,
+        CORR(heure_sin,             taux_congestion) AS heure_sin,
+        CORR(heure_cos,             taux_congestion) AS heure_cos,
         CORR(jour_semaine,          taux_congestion) AS jour_semaine,
+        CORR(jour_sin,              taux_congestion) AS jour_sin,
+        CORR(jour_cos,              taux_congestion) AS jour_cos,
         CORR(mois,                  taux_congestion) AS mois,
+        CORR(mois_sin,              taux_congestion) AS mois_sin,
+        CORR(mois_cos,              taux_congestion) AS mois_cos,
         CORR(is_weekend,            taux_congestion) AS is_weekend,
         CORR(temp,                  taux_congestion) AS temp,
         CORR(precip_mm,             taux_congestion) AS precip_mm,
