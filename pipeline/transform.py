@@ -1,6 +1,7 @@
 import duckdb
 import logging
 import holidays
+import numpy as np
 import pandas as pd
 
 from pathlib import Path
@@ -83,6 +84,15 @@ def compute_taux_congestion(df: pd.DataFrame) -> pd.DataFrame:
         (df["nb_vald_heure"] - df["baseline_mean"])
         / df["baseline_std"].replace(0,1)
     ).round(4)
+    
+    n_avant = df["taux_congestion"].notna().sum()
+    df["taux_congestion"] = df["taux_congestion"].where(
+        df["baseline_mean"] >= 1.0, other=np.nan
+    )
+    n_apres = df["taux_congestion"].notna().sum()
+    logger.info("Créneaux nocturnes invalidés : %d lignes -> taux_congestion=NaN", n_avant - n_apres)
+    
+    df["taux_congestion"] = df["taux_congestion"].clip(-5,5)
     
     logger.info("Taux de congestion calculé")
     return df
