@@ -1,41 +1,28 @@
 import requests
 from dotenv import load_dotenv
 import os
+import duckdb
 
-load_dotenv()
+con = duckdb.connect("data/warehouse.duckdb", read_only=True)
 
+# Doublons
+n_dup = con.execute("""
+    SELECT COUNT(*) FROM (
+        SELECT station, date, heure, COUNT(*) n
+        FROM dataset_enrichi GROUP BY 1,2,3 HAVING n > 1
+    )
+""").fetchone()[0]
+print(f"Doublons dataset_enrichi : {n_dup}")  # → 0
 
-url = "https://archive-api.open-meteo.com/v1/archive"
-params = {
-    "latitude": 48.8566,
-    "longitude": 2.3522,
-    "start_date": "2024-01-01",
-    "end_date": "2024-01-07",
-    "hourly": "temperature_2m,precipitation",
-    "timezone": "Europe/Paris",    
-}
+# Stats globales
+print(con.execute("""
+    SELECT
+        COUNT(*) AS nb_lignes,
+        COUNT(DISTINCT station) AS nb_stations,
+        MIN(taux_congestion) AS taux_min,
+        MAX(taux_congestion) AS taux_max,
+        AVG(taux_congestion) AS taux_moy
+    FROM dataset_enrichi
+""").df().to_string())
 
-resp = requests.get(url, params=params, timeout=30)
-print("Open-Meteo status: ", resp.status_code)
-print(resp.json()["hourly"]["temperature_2m"][:5])
-
-
-
-PUBLIC_KEY = os.getenv("OPENAGENDA_PUBLIC_KEY")
-print("Clé chargée : ", PUBLIC_KEY[:4] + "...")
-
-url = "https://api.openagenda.com/v2/agendas"
-params = {
-    "key": PUBLIC_KEY,
-    "size": 5,
-    "search": "Paris"
-    }
-resp = requests.get(url, params=params, timeout=30)
-
-agenda = resp.json().get("agendas", [])
-
-for a in agenda:
-    print(a["uid"], "—", a["title"])
-
-print("OpenAgenda status:", resp.status_code)
-print(resp.json())
+con.close()
