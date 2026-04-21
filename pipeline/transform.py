@@ -181,6 +181,28 @@ def add_calendar_features(df: pd.DataFrame, vacances_set: set, feries_set: set) 
     logger.info("Features calendrier ajoutées")
     return df
 
+def add_cyclic_features(df: pd.DataFrame) -> pd.DataFrame:
+    logger.info("Ajout des features cycliques sin/cos ...")
+    
+    # Heure : période 24h
+    df["heure_sin"] = np.sin(2 * np.pi * df["heure"] / 24)
+    df["heure_cos"] = np.cos(2 * np.pi * df["heure"] / 24)
+    
+    # Jour de la semaine : période 7
+    df["jour_sin"] = np.sin(2 * np.pi * df["jour_semaine"] / 7)
+    df["jour_cos"] = np.cos(2 * np.pi * df["jour_semaine"]/ 7)
+    
+    # Semaine de l'année : période 52
+    df["semaine_sin"] = np.sin(2 * np.pi * df["semaine_annee"] / 52)
+    df["semaine_cos"] = np.cos(2 * np.pi * df["semaine_annee"] / 52)
+    
+    # Mois : période 12
+    df["mois_sin"] = np.sin(2 * np.pi * df["mois"] / 12)
+    df["mois_cos"] = np.cos(2 * np.pi * df["mois"] / 12)
+    
+    logger.info("Features cycliques ajoutées : heure, jour, semaine, mois")
+    return df
+
 def run(db_path: Path = DB_PATH) -> pd.DataFrame:
     logger.info("=== Démarrage transform.py ===")
     
@@ -225,6 +247,7 @@ def run(db_path: Path = DB_PATH) -> pd.DataFrame:
     df = join_weather(df, con)
     df = join_events(df, con)
     df = add_calendar_features(df, vacances_set, feries_set)
+    df = add_cyclic_features(df)
     
     logger.info("Sauvergarde dans DuckDB -> table dataset_enrichi ...")
     con.execute("DROP TABLE IF EXISTS dataset_enrichi")
