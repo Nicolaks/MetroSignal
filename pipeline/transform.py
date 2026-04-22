@@ -55,6 +55,21 @@ def build_jours_feries_set(years: list) -> set:
             feries.add(date)
     return feries
 
+def build_covid_set() -> set:
+    confinements = [
+        ("2020-03-17", "2020-05-10"),  # Confinement 1
+        ("2020-10-30", "2020-12-14"),  # Confinement 2
+        ("2021-04-03", "2021-05-02"),  # Confinement 3
+    ]
+    covid = set()
+    for debut, fin in confinements:
+        d = pd.Timestamp(debut)
+        f = pd.Timestamp(fin)
+        while d <= f:
+            covid.add(d.date())
+            d += pd.Timedelta(days=1)
+    return covid
+
 def compute_taux_congestion(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Calcul du taux de congestion ...")
     
@@ -97,18 +112,20 @@ def compute_taux_congestion(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Taux de congestion calculé")
     return df
 
-def detect_greve(df: pd.DataFrame) -> pd.DataFrame:
+def detect_greve(df: pd.DataFrame, covid_set: set) -> pd.DataFrame:
     logger.info("Détection des jours de grève ...")
     
+    df_hors_covid = df[~df["date"].isin(covid_set)]
+    
     total_stations = (
-        df.groupby("date")["station"]
+        df_hors_covid.groupby("date")["station"]
         .nunique()
         .rename("total_stations")
         .reset_index()
     )
     
     stations_affectees = (
-        df[df["taux_congestion"] < -1.55]
+        df_hors_covid[df_hors_covid["taux_congestion"] < -1.55]
         .groupby("date")["station"]
         .nunique()
         .rename("stations_affectees")
@@ -121,6 +138,7 @@ def detect_greve(df: pd.DataFrame) -> pd.DataFrame:
     greve["is_greve"] = (greve["pct_affectees"] >= 0.50).astype(int)
     
     df = df.merge(greve[["date", "is_greve"]], on="date", how="left")
+    df["is_greve"] = df["is_greve"].fillna(0).astype(int)
     
     nb_jours_greve = greve["is_greve"].sum()
     logger.info("✅ %d jours de grève détectés", nb_jours_greve)
@@ -172,11 +190,12 @@ def join_events(df: pd.DataFrame, con: duckdb.DuckDBPyConnection) -> pd.DataFram
     logger.info("Jointure events OK : %d lignes", len(df))
     return df
 
-def add_calendar_features(df: pd.DataFrame, vacances_set: set, feries_set: set) -> pd.DataFrame:
+def add_calendar_features(df: pd.DataFrame, vacances_set: set, feries_set: set, covid_set: set) -> pd.DataFrame:
     logger.info("Ajout features calendrier ...")
     
     df["is_jour_ferie"] = df["date"].apply(lambda d: int(d in feries_set))
     df["is_vacances_scolaires"] = df["date"].apply(lambda d: int(d in vacances_set))
+    df["is_covid"] = df["date"].apply(lambda d: int(d in covid_set))
     
     logger.info("Features calendrier ajoutées")
     return df
@@ -240,13 +259,14 @@ def run(db_path: Path = DB_PATH) -> pd.DataFrame:
     years = list(range(2015, 2026))
     vacances_set = build_vacances_set(ZONES_VACANCES)
     feries_set = build_jours_feries_set(years)
+    covid_set = build_covid_set()
     
     df = compute_taux_congestion(df)
-    df = detect_greve(df)
+    df = detect_greve(df, covid_set)
     df = compute_station_stats(df)
     df = join_weather(df, con)
     df = join_events(df, con)
-    df = add_calendar_features(df, vacances_set, feries_set)
+    df = add_calendar_features(df, vacances_set, feries_set, covid_set)
     df = add_cyclic_features(df)
     
     logger.info("Sauvergarde dans DuckDB -> table dataset_enrichi ...")
