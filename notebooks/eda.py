@@ -126,37 +126,29 @@ fig.update_layout(
 save(fig, "2_3_heatmap_station_heure", height=700)
 
 # ── 2.4 Distribution taux_congestion par jour de la semaine ──────────────────
-dist_jour = con.execute("""
-    SELECT jour_semaine,
-           PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY taux_congestion) AS q1,
-           PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY taux_congestion) AS median,
-           PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY taux_congestion) AS q3,
-           AVG(taux_congestion) AS mean,
-           MIN(taux_congestion) AS min_val,
-           MAX(taux_congestion) AS max_val
+sample_jour = con.execute("""
+    SELECT jour_semaine, taux_congestion
     FROM dataset_enrichi
     WHERE taux_congestion BETWEEN -5 AND 5
-    GROUP BY jour_semaine
-    ORDER BY jour_semaine
+    USING SAMPLE 200000
 """).df()
 
 jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
-dist_jour["jour_label"] = dist_jour["jour_semaine"].map(dict(enumerate(jours)))
-
-fig = go.Figure()
-for _, row in dist_jour.iterrows():
-    fig.add_trace(go.Box(
-        name=row["jour_label"],
-        q1=[row["q1"]], median=[row["median"]], q3=[row["q3"]],
-        mean=[row["mean"]], lowerfence=[row["min_val"]], upperfence=[row["max_val"]],
-        boxmean=True,
-    ))
-fig.update_layout(
-    **LAYOUT_BASE,
-    title="📊 Distribution du Taux de Congestion par Jour de la Semaine",
-    yaxis_title="Taux congestion (z-score)",
-    showlegend=False,
+sample_jour["jour_label"] = sample_jour["jour_semaine"].map(dict(enumerate(jours)))
+sample_jour["jour_label"] = pd.Categorical(
+    sample_jour["jour_label"], categories=jours, ordered=True
 )
+sample_jour = sample_jour.sort_values("jour_label")
+
+fig = px.box(
+    sample_jour, x="jour_label", y="taux_congestion",
+    title="📊 Distribution du Taux de Congestion par Jour de la Semaine",
+    labels={"jour_label": "", "taux_congestion": "Taux congestion (z-score)"},
+    color="jour_label",
+    color_discrete_sequence=[COLOR_PRIMARY, COLOR_PRIMARY, COLOR_PRIMARY,
+                              COLOR_PRIMARY, COLOR_PRIMARY, COLOR_WARNING, COLOR_WARNING],
+)
+fig.update_layout(**LAYOUT_BASE, showlegend=False)
 save(fig, "2_4_distribution_congestion")
 
 
@@ -257,6 +249,15 @@ for i, annee in enumerate(sorted(monthly["annee"].unique())):
         mode="lines+markers", name=str(annee),
         line=dict(color=colors[i % len(colors)], width=lw),
     ))
+fig.add_annotation(
+    x=12, y=100,
+    text="⚠️ Baseline faussée<br>Grève RATP déc. 2019<br>→ indice artificiellement élevé",
+    showarrow=True, arrowhead=2,
+    ax=95, ay=-60,
+    font=dict(color=COLOR_ACCENT, size=11),
+    arrowcolor=COLOR_ACCENT,
+    align="left",
+)
 fig.update_layout(
     **LAYOUT_BASE,
     title="🦠 Indice de Fréquentation Mensuel (base 100 = 2019)",
@@ -360,43 +361,38 @@ fig.update_layout(**LAYOUT_BASE)
 save(fig, "4_1_meteo_vs_heure", height=550)
 
 # ── 4.2 Impact pluie par intensité ───────────────────────────────────────────
-precip_bins = con.execute("""
+sample_precip = con.execute("""
     SELECT
+        taux_congestion,
         CASE
-            WHEN precip_mm = 0        THEN '0_Sec'
-            WHEN precip_mm < 0.1      THEN '1_Trace'
-            WHEN precip_mm < 1        THEN '2_Légère'
-            WHEN precip_mm < 3        THEN '3_Modérée'
-            WHEN precip_mm < 7        THEN '4_Forte'
-            ELSE                           '5_Très forte'
-        END AS intensite,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY taux_congestion) AS q1,
-        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY taux_congestion) AS median,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY taux_congestion) AS q3,
-        AVG(taux_congestion) AS mean,
-        MIN(taux_congestion) AS min_val,
-        MAX(taux_congestion) AS max_val
+            WHEN precip_mm = 0   THEN 'Sec'
+            WHEN precip_mm < 0.1 THEN 'Trace'
+            WHEN precip_mm < 1   THEN 'Légère'
+            WHEN precip_mm < 3   THEN 'Modérée'
+            WHEN precip_mm < 7   THEN 'Forte'
+            ELSE                      'Très forte'
+        END AS intensite
     FROM dataset_enrichi
     WHERE taux_congestion BETWEEN -5 AND 5
-    GROUP BY intensite
-    ORDER BY intensite
+      AND precip_mm IS NOT NULL
+    USING SAMPLE 200000
 """).df()
 
-fig = go.Figure()
-for _, row in precip_bins.iterrows():
-    fig.add_trace(go.Box(
-        name=row["intensite"].split("_", 1)[1],
-        q1=[row["q1"]], median=[row["median"]], q3=[row["q3"]],
-        mean=[row["mean"]], lowerfence=[row["min_val"]], upperfence=[row["max_val"]],
-        boxmean=True,
-    ))
-fig.add_hline(y=0, line_dash="dash", line_color="gray", annotation_text="Normal (z=0)")
-fig.update_layout(
-    **LAYOUT_BASE,
-    title="🌧️ Intensité des Précipitations vs Taux de Congestion",
-    xaxis_title="Intensité pluie", yaxis_title="Taux congestion (z-score)",
-    showlegend=False,
+ordre = ["Sec", "Trace", "Légère", "Modérée", "Forte", "Très forte"]
+sample_precip["intensite"] = pd.Categorical(
+    sample_precip["intensite"], categories=ordre, ordered=True
 )
+sample_precip = sample_precip.sort_values("intensite")
+
+fig = px.box(
+    sample_precip, x="intensite", y="taux_congestion",
+    title="🌧️ Intensité des Précipitations vs Taux de Congestion",
+    labels={"intensite": "Intensité pluie", "taux_congestion": "Taux congestion (z-score)"},
+    color="intensite",
+    color_discrete_sequence=px.colors.sequential.Blues_r[:6],
+)
+fig.add_hline(y=0, line_dash="dash", line_color="gray", annotation_text="Normal (z=0)")
+fig.update_layout(**LAYOUT_BASE, showlegend=False)
 save(fig, "4_2_pluie_intensite")
 
 # ── 4.3 Delta congestion pluie vs sec par heure ───────────────────────────────
@@ -419,7 +415,7 @@ fig.add_hline(y=0, line_color="gray")
 fig.update_layout(
     **LAYOUT_BASE,
     title="☔ Impact de la Pluie par Heure — Δ Taux Congestion (Pluie − Sec)",
-    xaxis=dict(title="Heure", tickmode="linear", dtick=1),
+    xaxis=dict(title="Heure", tickmode="linear", dtick=1, range=[-0.5, 23.5]),
     yaxis_title="Δ z-score congestion",
 )
 save(fig, "4_3_delta_pluie_heure")
