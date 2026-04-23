@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DB_PATH     = Path("data/warehouse.duckdb")
-OUTPUT_DIR  = Path("../img/eda")
+OUTPUT_DIR  = Path("outputs/img/eda")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 TEMPLATE       = "plotly_dark"
@@ -36,7 +36,9 @@ figures = []
 def save(fig: go.Figure, name: str, height: int = 600) -> None:
     fig.update_layout(height=height, title_text=f"{fig.layout.title.text}")
     figures.append(fig)
-
+    img_path = OUTPUT_DIR / f"{name}.png"
+    fig.write_image(str(img_path))
+    logger.info("📸 Image sauvegardée : %s", img_path)
 
 # ── Connexion ─────────────────────────────────────────────────────────────────
 con = duckdb.connect(str(DB_PATH), read_only=True)
@@ -95,7 +97,7 @@ fig = px.line(
     markers=True,
 )
 fig.update_layout(**LAYOUT_BASE)
-fig.update_xaxes(tickmode="linear", dtick=1)
+fig.update_xaxes(tickmode="linear", dtick=1, range=[-0.5, 23.5])
 save(fig, "2_2_heures_pointe")
 
 # ── 2.3 Heatmap station × heure ──────────────────────────────────────────────
@@ -509,7 +511,7 @@ for station, color in [(station_imprev, COLOR_ACCENT), (station_stable, COLOR_PR
 fig.update_layout(
     **LAYOUT_BASE,
     title="📊 Profil Horaire : Station Imprévisible vs Station Stable (±1σ)",
-    xaxis=dict(title="Heure", tickmode="linear", dtick=1),
+    xaxis=dict(title="Heure", tickmode="linear", dtick=1, range=[-0.5, 23.5]),
     yaxis_title="Validations/heure",
 )
 save(fig, "5_3_profil_horaire_imprev")

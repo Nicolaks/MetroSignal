@@ -1,264 +1,212 @@
-# 📊 MetroSignal — Rapport EDA
+# 📊 MetroSignal — Analyse Exploratoire des Données (EDA)
 
-**Dataset** : 66,749,412 lignes | 1,461 stations | 2015–2025  
-**Pipeline** : DuckDB SQL → Plotly → HTML
+**Dataset** :  64 253 252 lignes · 779 stations · 2015–2025  
+**Pipeline** : Toutes les agrégations sont réalisées directement en SQL via DuckDB. Pandas ne reçoit que les résultats finaux pour éviter le goulot mémoire (~16 GB si chargement complet).
 
 ---
 
 ## 1. Top 20 Stations — Volume Total de Validations
 
-![Top 20](img/top_20_stations_volume_total_de_validations.png)
+![Top 20](../../outputs\img\eda\2_1_top20_stations.png)
 
-**Saint-Lazare** domine avec ~700M de validations sur 11 ans, soit presque le double de
-**La Défense-Grande Arche** (~390M). Les grandes gares terminus (Lyon, Nord, Est, Montparnasse)
-occupent les rangs 3 à 6, ce qui est cohérent avec leur rôle de hub intermodal.
+**Saint-Lazare domine largement** avec ~780M de validations sur 11 ans, presque le double de La Défense-Grande Arche (~544M). Les grandes gares terminus (Lyon, Nord, Est, Montparnasse) et les pôles d'échange majeurs (Châtelet-Les Halles) occupent les rangs suivants.
 
-À noter : **Châtelet** et **Châtelet-Les Halles** apparaissent séparément (~500M cumulés),
-ce qui sous-estime leur poids réel dans le réseau. En pratique c'est le pôle le plus fréquenté
-de France.
+**Limite connue — La Défense surestimée** : La Défense-Grande Arche agrège plusieurs codes arrêts correspondant à des lignes distinctes (RER A code 393/394, Métro 1 code 414, Transilien). Son volume (~544M) est artificiellement élevé par rapport aux stations mono-ligne. À prendre en compte lors de l'interprétation du classement par volume.
 
-**Implication ML** : Ces stations à fort volume auront un poids disproportionné dans les métriques
-globales. Il faudra entraîner des modèles par station ou normaliser correctement.
+**Implication ML** : entraîner des modèles par station ou utiliser `rang_station` comme feature pour éviter que les grandes stations dominent les métriques globales.
 
 ---
 
 ## 2. Validations Moyennes par Heure — Semaine vs Weekend
 
-![Validations Moyennes](img/validations_moyennes_par_heure_semaine_vs_weekend.png)
+![Validations Moyennes](../../outputs\img\eda\2_2_heures_pointe.png)
 
-Le profil semaine affiche un **double pic classique** :
-- **8h** : pic matinal à ~810 validations/heure/station (rush domicile→travail)
-- **17h–18h** : pic soir à ~730–700 (retour)
+Le profil semaine présente le **double pic classique** à 8h (pic à ~840 validations/station) et 17h–18h (~760), avec un creux marqué à 9h–10h après le rush matinal. Le profil weekend est radicalement différent : pas de pic matinal, montée progressive jusqu'à un plateau entre 14h et 19h (~340 validations/station).
 
-Le weekend présente un profil radicalement différent : **pas de pic matinal**, montée progressive
-jusqu'à un plateau entre **14h et 19h** (~330 validations), puis descente douce.
+**Anomalie axe X** : l'axe affiche -1 et 24 en dehors de la plage réelle 0–23. Artefact d'affichage Plotly corrigé avec `range=[-0.5, 23.5]` sur les figures suivantes.
 
-Le creux nocturne est commun aux deux types (1h–4h ≈ 0), attendu vu la fermeture du réseau.
+**Implication ML** : `heure` et `is_weekend` seront parmi les features les plus importantes. L'encodage cyclique sin/cos est obligatoire pour que le modèle comprenne que 23h et 0h sont adjacentes.
 
-**Implication ML** : L'encodage cyclique sin/cos de `heure` et le flag `is_weekend` seront
-parmi les features les plus importantes. Le modèle devra capturer ces deux régimes distincts.
+**Note sur les créneaux 2h–5h** : le réseau RATP n'opère pas sur ces créneaux. Les ~7.3M de lignes correspondantes ont `taux_congestion = NaN` après invalidation des créneaux avec `baseline_mean < 1 validation` (division par quasi-zéro produisant des z-scores aberrants jusqu'à +23).
 
 ---
 
 ## 3. Heatmap Taux de Congestion — Top 30 Stations × Heure
 
-![Heatmap](img/heatmap_taux_de_congestion_top_30_stations_x_heure.png)
+![Heatmap](../../outputs\img\eda\2_3_heatmap_station_heure.png)
 
-La heatmap révèle des **patterns très hétérogènes** selon les stations :
+La heatmap révèle une structure globalement homogène (teinte jaune/neutre = z-score ≈ 0) avec quelques anomalies localisées :
 
-- **LA DEFENSE / HAUSSMANN-SAINT-LAZARE** : pic rouge intense à **3h–4h du matin** — 
-  anomalie surprenante, probablement liée à des événements ponctuels ou des erreurs résiduelles
-  dans les profils horaires pour ces créneaux nocturnes.
-- **BIBLIOTHEQUE FRANCOIS MITTERRAND / BELLEVILLE** : fort pic vert à **3h–5h**, même pattern.
-- La majorité des stations est jaune (z-score ≈ 0) sur la plage **6h–23h**, ce qui confirme
-  que le z-score est bien centré.
+- **LA DEFENSE-GRANDE ARCHE et ESPLANADE DE LA DEFENSE** : taches noires à 2h–4h indiquant des z-scores très négatifs. Cause probable : la reconstruction horaire via `PROFIL_FER` attribue un pourcentage infime (~0.003%) aux créneaux nocturnes. Sur certaines stations, quelques validations isolées à ces heures (nettoyeurs, agents RATP) produisent des z-scores extrêmes malgré le fix `baseline_mean < 1`. À investiguer en Phase 4.
+- **BELLEVILLE** : tache rouge à 3h–4h (z-score positif). Même cause — une poignée de validations nocturnes sur une baseline quasi-nulle.
 
-**Point d'attention** : Les anomalies nocturnes (2h–5h) sur certaines stations méritent
-une investigation avant le ML — elles pourraient être des artefacts de la reconstruction
-horaire via PROFIL_FER sur des créneaux avec très peu de données.
+La majorité des stations présentent un profil stable, confirmant que le z-score est bien calibré sur la période 2015–2025.
 
 ---
 
-## 4. Série Temporelle Globale — Validations Journalières 2015–2025
+## 4. Distribution du Taux de Congestion par Jour de la Semaine
 
-![Série Temporelle](img/serie_temporelle_globale_validations_journalières_2015_2025.png)
+![Série Temporelle](../../outputs/img/eda/2_4_distribution_congestion.png)
 
-Quatre événements majeurs se lisent clairement :
+Les jours ouvrés (Lundi–Vendredi) présentent une distribution **resserrée et symétrique** autour de 0, avec des moustaches atteignant ±2.5 z-scores. Le weekend (Samedi–Dimanche) se distingue par :
 
-1. **COVID — Mars 2020** : effondrement brutal à quasi-zéro lors du confinement 1 (zone rouge).
-   La remontée est progressive jusqu'en 2022, sans jamais retrouver exactement le niveau 2019.
+- Une **médiane légèrement négative** (~-0.1) : le trafic weekend est structurellement sous la normale des jours ouvrés
+- Une **variance nettement plus large** : les moustaches descendent jusqu'à -4, signe d'une plus grande imprévisibilité
 
-2. **Grèves 2019–2020** : dense cluster de croix roses avant le COVID, correspondant à la
-   grève historique contre la réforme des retraites (décembre 2019 – janvier 2020).
-
-3. **JO Paris 2024** (zone jaune) : pic visible au-dessus de la tendance habituelle,
-   confirmant l'afflux de voyageurs pendant les Jeux.
-
-4. **Spike fin 2024** : pics à ~10–14M de validations journalières, nettement au-dessus
-   de la normale. À investiguer — possible changement de périmètre des données IDFM 2024–2025.
+**Note technique** : la version initiale de cette figure utilisait `go.Box` avec des percentiles précalculés en SQL, ce qui causait la superposition de toutes les boîtes sur x=0 (absence de coordonnée x explicite dans Plotly). Remplacé par `px.box` sur un échantillon de 200 000 lignes tiré avec `USING SAMPLE`.
 
 ---
 
-## 5. Nombre de Jours de Grève Détectés par Année
+## 5. Série Temporelle Globale — Validations Journalières 2015–2025
 
-![Jours de Grève](img/nombre_de_jours_de_greve_detectes_par_annee.png)
+![serie temporelle](../../outputs/img/eda/3_1_serie_temporelle.png)
 
-- **2020** : 124 jours — record absolu, combinaison de la grève retraites (jan–mars)
-  et du COVID (jours à trafic quasi-nul détectés comme grèves).
-- **2021** : ~68 jours — probable contamination COVID (confinements 2 et 3).
-- Les autres années oscillent entre **8 et 33 jours**, cohérent avec le calendrier social français.
+Quatre événements historiques sont clairement lisibles :
 
-**Point d'attention** : 2020–2021 sont contaminés par le COVID dans la détection de grèves.
-Il faudra soit exclure ces années du flag `is_greve`, soit ajouter un flag `is_covid` séparé
-pour éviter que le modèle confonde les deux phénomènes.
+**COVID-19 (mars 2020)** : effondrement brutal à ~200K validations/jour (vs ~5–6M normalement), soit une chute de 96%. La récupération est progressive et n'atteint pas le niveau pré-COVID avant fin 2022, traduisant un changement durable des habitudes (télétravail, vélo).
 
----
+**Grève RATP décembre 2019 – janvier 2020** : dense cluster de marqueurs rouges sur ~40 jours. La grève des transports contre la réforme des retraites est la plus longue de l'histoire de la RATP.
 
-## 6. Indice de Fréquentation Mensuel (base 100 = 2019)
+**JO Paris 2024 (juillet–août)** : pic visible à ~8–10M validations/jour, nettement au-dessus de la normale estivale.
 
-![Fréquentation Mensuel](img/indice_de_frequentation_mensuel_base_100_2019.png)
+**Spike post-2023** : hausse structurelle du trafic à partir de 2023 (~7–8M vs ~5–6M avant COVID). Probablement lié à l'extension du périmètre IDFM (intégration de nouvelles lignes) plutôt qu'à une croissance organique — à documenter dans les limites du projet.
 
-- **2019** (ligne de référence) : stable autour de 100 toute l'année.
-- **2020** (jaune, courbe la plus basse) : chute à ~0 en avril–mai, remontée progressive.
-  Décembre 2020 reste à ~40.
-- **2015–2018** : légèrement en dessous de 100, ce qui suggère une **croissance organique
-  du trafic** entre 2015 et 2019.
-- **2022–2025** : au-dessus de 100 en fin d'année, surtout décembre — à surveiller,
-  possible effet périmètre ou nouvelles stations intégrées.
-
-La **saisonnalité** est faible mais visible : légère baisse en août (vacances) pour toutes
-les années.
+**Note sur la détection de grèves** : les marqueurs rouges pendant le confinement COVID 2020 étaient initialement des faux positifs (trafic quasi-nul détecté comme grève). Corrigé par l'ajout du flag `is_covid` et l'exclusion des périodes COVID dans la fonction `detect_greve()`.
 
 ---
 
-## 7. JO Paris 2024 — Stations avec la Plus Forte Hausse vs Été 2023
+## 6. Nombre de Jours de Grève Détectés par Année
 
-![JO Paris 2024](img/JO_paris_2024_stations_avec_la_plus_forte_hausse_vs_ete_2023.png)
+![grève](../../outputs/img/eda/3_2_greves_par_an.png)
 
-Le podium est sans surprise :
+Après correction du flag `is_covid` :
 
-1. **STADE** : +5.3 z-scores — station desservant directement les sites olympiques.
-2. **PTE D'AUTEUIL** : +4.8 — Roland Garros utilisé pour le tennis olympique.
-3. **PTE DE PANTIN** : +4.2 — proximité du Stade de France.
+- **2019 : 30 jours** — cohérent avec la grève RATP de décembre
+- **2020 : 60 jours** — réduit depuis 124 (avant correction COVID). Les 60 restants correspondent aux grèves sociales réelles hors confinements
+- **2021 : 51 jours** — légèrement élevé, possiblement des perturbations liées au contexte post-COVID
+- **2022–2025 : 5–10 jours/an** — retour à un niveau normal
 
-Plus surprenant : **HAUSSMANN-SAINT-LAZARE** et **EC. MILITAIRE** dans le top 20,
-reflétant l'afflux touristique global sur tout Paris et pas seulement les sites sportifs.
-
----
-
-## 8. Insight Clé : Météo vs Heure — Corrélation avec le Taux de Congestion
-
-![Insight Clé](img/insight_cle_meteo_vs_heure_correlation_avec_le_taux_de_congestion.png)
-
-**Résultat surprenant** : 1,459 stations sur 1,459 ont leur corrélation météo > corrélation
-heure, soit **100%**. Tous les points sont collés sur l'axe Y gauche (r_heure ≈ 0).
-
-Cela indique un **problème de fond** : la corrélation de Pearson entre `heure` (variable
-entière 0–23) et `taux_congestion` est quasi-nulle car la relation est **non-linéaire**
-(le trafic monte à 8h, redescend à 10h, remonte à 17h — une sinusoïde, pas une droite).
-
-**Fix pour la Phase 4** : utiliser les encodages cycliques `sin(2π×heure/24)` et
-`cos(2π×heure/24)` comme features, et recalculer cette corrélation avec ces transformations.
-La corrélation heure sera alors bien plus forte et l'insight sera plus nuancé.
+**Seuil de détection** : un jour est flaggé `is_greve = 1` si ≥50% des stations actives ont `taux_congestion < -1.55`.
 
 ---
 
-## 9. Impact de la Pluie par Heure — Δ Taux Congestion (Pluie − Sec)
+## 7. Indice de Fréquentation Mensuel (base 100 = 2019)
 
-![Impact pluie par heure](img/impact_de_la_pluie_par_heure_delta_taux_congestion_pluie_sec.png)
+![JO Paris 2024](../../outputs/img/eda/3_3_indice_frequentation.png)
 
-La pluie a un **effet positif faible mais cohérent** sur le taux de congestion (+0.01 à +0.05
-z-score) sur quasiment toutes les heures — les gens prennent plus le métro quand il pleut.
+**2020 en jaune** : chute à 5–10 en avril (confinement strict), remontée progressive mais le niveau 2019 n'est jamais retrouvé sur l'année.
 
-Les deux heures avec effet négatif (5h et 8h) sont contre-intuitives. À 8h notamment, on
-s'attendrait à plus de monde avec la pluie. Hypothèse : à 8h, le réseau est déjà saturé
-(z-score déjà élevé les jours secs), donc l'effet marginal de la pluie est dilué.
+**Pic de décembre pour toutes les années** : artefact de la baseline. Décembre 2019 est le pire mois de la grève RATP — son total de validations est anormalement bas, ce qui déprime la base 100 de ce mois. Toutes les autres années ayant un décembre normal, leur indice explose mécaniquement. **Ce n'est pas un bug à corriger** : c'est une information réelle sur l'impact de la grève, documentée par une annotation sur le graphe.
 
-L'effet est le plus fort à **20h–21h** (+0.05), heure de sortie où la pluie pousse davantage
-à prendre le métro plutôt que de marcher ou prendre un vélib.
+**Croissance 2015–2019** : les années antérieures sont légèrement sous 100 (80–90), confirmant une croissance organique du trafic sur la période.
+
+---
+
+## 8. JO Paris 2024 — Stations avec la Plus Forte Hausse vs Été 2023
+
+![JO Paris 2024](../../outputs/img/eda/3_4_jo_2024.png)
+
+Les stations les plus impactées sont cohérentes avec la localisation des sites olympiques :
+
+- **LE STADE** et **DOURDAN-LA-FORET** : delta > 4 z-scores — accès direct aux sites de compétition
+- **PORTE DE PANTIN** et **PORTE DE LA CHAPELLE** : accès au Stade de France et aux sites nord-parisiens
+- **PORTE D'AUTEUIL** : Roland-Garros (tennis)
+
+L'impact est réel et mesurable sur 16 jours (26 juillet – 11 août 2024), ce qui **valide l'utilité de la feature `nb_events`** pour le modèle ML. Les événements de grande ampleur laissent une signature claire dans les données de validation.
+
+---
+
+## 9. Insight Clé : Météo vs Heure — Corrélation avec le Taux de Congestion
+
+![Insight Clé](../../outputs/img/eda/4_1_meteo_vs_heure.png)
+
+Toutes les stations apparaissent dans le quadrant "Météo > Heure" (axe X ≈ 0, axe Y > 0). Ce résultat à ~100% est un **artefact méthodologique**, pas un résultat substantiel.
+
+**Explication** : le `taux_congestion` est un z-score calculé par créneau `(station, jour_semaine, heure)`. Par construction, la moyenne de `taux_congestion` par heure est mécaniquement 0 pour chaque heure (vérification : toutes les heures ont `AVG(taux_congestion) ≈ -0.001`). La corrélation de Pearson entre `heure` et une variable dont la moyenne conditionnelle est constante est nécessairement quasi-nulle.
+
+**Pearson est le mauvais outil ici.** Pour la Phase 4, recalculer avec :
+- Encodage cyclique `heure_sin / heure_cos` (déjà présents dans le dataset)
+- Corrélation de Spearman pour les features météo
+- Mutual Information comme alternative non-paramétrique
+
+L'hypothèse "certaines stations aériennes sont plus sensibles à la météo qu'à l'heure" reste valide — elle sera testée correctement en Phase 4.
 
 ---
 
 ## 10. Intensité des Précipitations vs Taux de Congestion
 
-![Intensité précipitations](img/intensite_des_precipitations_vs_taux_de_congestion.png)
+![Intensité précipitations](../../outputs/img/eda/4_2_pluie_intensite.png)
 
-Les boxplots se superposent presque entièrement quelle que soit l'intensité de pluie —
-les médianes sont toutes à 0 et les IQR sont identiques.
+L'effet des précipitations sur le taux de congestion est **statistiquement faible à l'échelle globale** — les distributions "Sec", "Légère", "Modérée", "Forte" se superposent largement. La catégorie "Très forte" présente une variance réduite, probablement due à un faible nombre d'observations.
 
-Cela confirme que **l'effet de la pluie sur le taux de congestion est statistiquement faible**
-à l'échelle agrégée (toutes stations confondues). La pluie est probablement un signal plus
-fort pour des **stations spécifiques** (stations aériennes, stations près de parcs) que
-pour le réseau global.
+**Note technique** : même bug que le boxplot jour de la semaine — `go.Box` avec percentiles précalculés superpose tout sur x=0. Remplacé par `px.box` sur échantillon 200K lignes.
+
+Le signal météo sera probablement plus fort au niveau station qu'au niveau réseau global, notamment pour les stations aériennes (ligne 6, certaines stations RER).
 
 ---
 
-## 11. Distribution du Taux de Congestion par Jour de la Semaine
+## 11. Impact de la Pluie par Heure — Δ Taux Congestion (Pluie − Sec)
 
-![Taux de congestion](img/distribution_du_taux_de_congestion_par_jour_de_la_semaine.png)
+![Impact pluie par heure](../../outputs/img/eda/4_3_delta_pluie_heure.png)
 
-Tous les jours affichent la même distribution (boxplot unique au centre) — ce qui suggère
-que le code ne génère qu'**une seule boîte au lieu de sept**. Bug confirmé dans le code :
-les percentiles précalculés en SQL créent des boîtes sans axe X distinct pour chaque jour.
+La pluie a un **effet positif cohérent sur le trafic** (+0.01 à +0.07 z-score) : les gens prennent davantage le métro sous la pluie. L'effet est le plus fort entre 13h et 20h (+0.04 à +0.07).
 
-**Fix** : vérifier que `jour_label` est bien passé comme `x` dans `go.Box` ou utiliser
-`px.box` directement sur un DataFrame avec la colonne `jour_semaine`.
+**Effet négatif à 8h** (delta ≈ -0.04) : contre-intuitif mais explicable — le réseau est déjà saturé à l'heure de pointe les jours secs, limitant l'effet marginal de la pluie. À 8h sous la pluie, certains usagers habituels décalent leur départ ou cherchent d'autres modes.
+
+**Créneaux 3h–5h** : deltas négatifs parasites dus aux `taux_congestion = NaN` (créneaux nocturnes invalides) qui faussent la moyenne conditionnelle. À neutraliser en Phase 4 avec un filtre `WHERE taux_congestion IS NOT NULL`.
 
 ---
 
 ## 12. Top 30 Stations les Plus Imprévisibles (Variance du z-score)
 
-![Top 30 stations](img/top_30_stations_les_plus_imprevisibles_variance_du_z_score.png)
+![Top 30 stations](../../outputs/img/eda/5_1_stations_imprev.png)
 
-Toutes les variances sont comprises entre **0 et 1**, ce qui est cohérent avec le fix
-appliqué (variance du z-score).
+**ROSNY-BOIS-PERRIER** en tête avec variance ≈ 1.0, suivi de stations de grande couronne (THIEUX-NANTOUILLET, BLANC-MESNIL, VOSGES, CDG 2-TGV). Ce résultat est **contre-intuitif** : on attendait les grandes gares parisiennes en tête.
 
-**GARE DE LYON** et **LA DEFENSE-GRANDE ARCHE** arrivent en tête — ce sont aussi les
-stations à fort volume, ce qui confirme le lien entre trafic élevé et imprévisibilité
-(plus de sources de variation : grèves, événements, météo).
+**Explication** : la variance est calculée sur le `taux_congestion` (z-score), pas sur le volume brut. Les stations de grande couronne ont des profils très variables — elles sont très fréquentées certains jours (événements, matchs au Stade de France pour les stations proches) et quasi-vides d'autres jours. Les grandes gares parisiennes ont un flux plus régulier et prévisible malgré leur volume.
 
-**ARGENTEUIL** en queue de liste avec variance ≈ 0 — station périphérique à flux très
-stable et prévisible.
+**Note** : après correction du bug `variance_historique` (calcul initial sur `nb_vald_heure` brut au lieu de `taux_congestion`), les valeurs sont maintenant entre 0.43 et 1.0, directement comparables entre stations.
 
 ---
 
-## 13. Profil Horaire : Station Imprévisible vs Station Stable
+## 13. Volume vs Variance — Stations Stratégiques pour le ML
 
-![Profil horaire](img/profil_horaire_station_imprevisible_vs_station_stable.png)
+![Volume vs Variance](../../outputs/img/eda/5_2_volume_vs_variance.png)
 
-**GARE DE LYON** (rouge) montre le double pic classique semaine (8h et 18h) avec une
-**bande d'incertitude énorme** (±1σ pouvant aller jusqu'à 7,000 validations/heure) —
-certains jours c'est quasi-vide (grèves, COVID), d'autres c'est bondé (JO, events).
+Le scatter révèle deux populations :
 
-**MONNERVILLE** (cyan) est pratiquement plate à 0 sur toutes les heures — petite station
-RER avec un flux quasi-nul et invariant. Peu d'intérêt pour le ML.
+- **Cluster dense en haut à gauche** : la majorité des stations (~750) avec un faible volume et une variance élevée (~0.95–1.0)
+- **Outlier isolé en haut à droite** : LA DEFENSE-GRANDE ARCHE (~8000 validations/heure, variance ~0.95) — grande station avec taux de grève élevé (rouge foncé)
+
+La corrélation volume/variance est **faiblement positive** contrairement à l'hypothèse initiale. Les stations stratégiques pour le ML sont celles à fort volume (grandes gares) car elles concentrent le trafic opérationnel, même si elles ne sont pas les plus imprévisibles en termes de z-score.
+
+**Les médianes** (lignes pointillées) divisent l'espace en 4 quadrants. Le quadrant haut-droite (fort volume + forte variance) est vide — aucune grande gare n'est vraiment imprévisible sur l'échelle z-score.
 
 ---
 
-## 14. Volume vs Variance — Stations Stratégiques pour le ML
+## 14. Profil Horaire : Station Imprévisible vs Station Stable (±1σ)
 
-![Volume vs variance](img/Volume_vs_variance_stations_strategiques_pour_le_ml.png)
+![profil horaire station horaire](../../outputs/img/eda/5_3_profil_horaire_imprev.png)
 
-Le scatter confirme que **variance et volume sont corrélés** : les grandes stations
-(droite du graphe) ont toutes une variance proche de 1, tandis que les petites stations
-(gauche) ont des variances plus dispersées.
+**ROSNY-BOIS-PERRIER** (imprévisible) : double pic classique 8h/17h avec une bande ±1σ très large (~±300 validations). Certains jours quasi-vides (grèves, COVID), d'autres très chargés (JO, événements) — la bande traduit cette variabilité extrême.
 
-Le quadrant stratégique ML (fort volume + forte variance) correspond aux
-**grandes gares parisiennes** — ce sont les stations les plus intéressantes à prédire
-car elles concentrent le trafic ET sont les moins prévisibles.
+**PORTE D'AUTEUIL** (stable) : profil plat à ~50–130 validations/heure avec une bande ±1σ quasi-invisible. Station de quartier résidentiel à flux très régulier.
 
-La couleur (taux de grève) est plus foncée pour les grosses stations, confirmant qu'elles
-sont plus sensibles aux perturbations sociales.
+**Anomalie axe X** : -1 et 24 visibles — même artefact Plotly que figure 2, à corriger avec `range=[-0.5, 23.5]`.
 
 ---
 
 ## 15. Corrélation Pearson des Features avec taux_congestion
 
-![Pearson](img/correlation_pearson_des_features_avec_taux_congestion.png)
+![Pearson](../../outputs/img/eda/6_1_feature_correlations.png)
 
-Toutes les corrélations sont **négatives**, ce qui est inattendu pour `heure`, `nb_events`
-ou `temp`.
+**Features à signal fort** (en valeur absolue) :
+- `is_greve` : -0.35 — la grève réduit massivement le trafic
+- `is_vacances_scolaires` : -0.22 — les vacances réduisent significativement le trafic
+- `is_jour_ferie` : -0.20 — même effet
+- `mois_cos` : +0.11 — saisonnalité annuelle (hiver = pic, été = creux)
+- `temp` : +0.10 — les journées chaudes réduisent légèrement le trafic (vélo, marche)
 
-- `is_greve` (-0.45) : corrélation négative forte — normal, une grève fait chuter le trafic.
-- `is_vacances_scolaires` (-0.22) et `is_jour_ferie` (-0.20) : idem, moins de monde en vacances.
-- `temp` (-0.12) : surprenant — la corrélation négative suggère que la chaleur fait baisser
-  le trafic (été = vacances + télétravail).
-- `heure`, `jour_semaine`, `is_weekend` ≈ 0 : confirme le problème de non-linéarité
-  mentionné dans la section insight météo.
+**Features à signal quasi-nul** : toutes les features temporelles (`heure`, `heure_sin`, `heure_cos`, `jour_semaine`, `jour_sin`, `jour_cos`). Ceci n'est **pas un bug** — c'est une conséquence directe de la normalisation : le z-score est calculé par `(station, jour_semaine, heure)`, donc la moyenne conditionnelle de `taux_congestion` par heure est mécaniquement 0. Pearson ne peut pas détecter un signal sur une variable utilisée dans la normalisation de la cible.
 
-**Conclusion** : Pearson n'est pas adapté pour capturer les relations non-linéaires de ce
-dataset. Les features temporelles seront bien plus puissantes avec un encodage cyclique
-et un modèle arbre (LightGBM) qui capture les interactions automatiquement.
-
----
-
-## Synthèse & Recommandations Phase 4
-
-| Priorité | Action |
-|----------|--------|
-| 🔴 Urgent | Investiguer les anomalies nocturnes (2h–5h) dans la heatmap |
-| 🔴 Urgent | Séparer `is_greve` et `is_covid` pour 2020–2021 |
-| 🟡 Important | Fix boxplot distribution (bug affichage jour semaine) |
-| 🟡 Important | Encodage cyclique `heure` → sin/cos avant corrélations |
-| 🟢 Phase 4 | Features lag 1h, 24h, 7j par station |
-| 🟢 Phase 4 | LightGBM avec TimeSeriesSplit — jamais de split aléatoire |
+**Conclusion** : Pearson n'est pas adapté pour évaluer l'importance des features temporelles sur ce dataset. LightGBM capturera les interactions et non-linéarités automatiquement via les splits sur les arbres. Les SHAP values confirmeront l'importance réelle de chaque feature en Phase 4.
