@@ -16,3 +16,4 @@ holidays
 pyarrow
 nbformat
 kaleido
+joblib

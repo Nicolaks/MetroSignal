@@ -27,6 +27,15 @@ def cmd_transform(args):
     
     run()
     
+def cmd_train(args):
+    from pipeline.ml.train import run
+    
+    run()
+    
+def cmd_evaluate(args):
+    from pipeline.ml.train import run_evaluate
+    run_evaluate()
+    
 def cmd_events(args):
     from pipeline.ingest_events import run
     
@@ -129,6 +138,12 @@ def main():
     p_inspect.add_argument("--table",  type=str, default=None, help="Filtrer sur une table spécifique")
     p_inspect.add_argument("--sample", action="store_true",    help="Afficher 5 lignes de sample")
     p_inspect.set_defaults(func=cmd_inspect)
+    
+    p_train = subparsers.add_parser("train", help="Entraînement modèle LightGBM")
+    p_train.set_defaults(func=cmd_train)
+    
+    p_evaluate = subparsers.add_parser("evaluate", help="Évaluation du modèle sauvegardé")
+    p_evaluate.set_defaults(func=cmd_evaluate)
 
     args = parser.parse_args()
     args.func(args)
