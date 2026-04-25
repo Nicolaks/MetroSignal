@@ -18,7 +18,7 @@ MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 FEATURES = [
     "heure_sin", "heure_cos",
-    "jour_sin", "jour_cos",
+    "jour_sin", "jour_cos", "semaine_cos", "semaine_sin", "variance_historique",
     "mois_sin", "mois_cos",
     "is_weekend", "is_jour_ferie", "is_vacances_scolaires",
     "is_greve", "is_covid",
@@ -37,7 +37,7 @@ def load_data() -> pd.DataFrame:
             station, date, heure, jour_semaine,
             taux_congestion,
             heure_sin, heure_cos,
-            jour_sin, jour_cos,
+            jour_sin, jour_cos, semaine_sin, semaine_cos, variance_historique,
             mois_sin, mois_cos,
             is_weekend, is_jour_ferie, is_vacances_scolaires,
             is_greve, is_covid,
