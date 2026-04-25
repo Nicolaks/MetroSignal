@@ -1,6 +1,7 @@
 import argparse
 import logging
 import duckdb
+import uvicorn
 
 from pathlib import Path
 
@@ -40,6 +41,16 @@ def cmd_events(args):
     from pipeline.ingest_events import run
     
     run(start_date=args.start_date, end_date=args.end_date, db_path=DB_PATH)
+
+def cmd_serve(args):
+    print("🚇 Démarrage de MetroSignal API sur http://localhost:8000")
+    print("📖 Documentation interactive : http://localhost:8000/docs")
+    uvicorn.run(
+        "api.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+    )
     
 def cmd_inspect(args):
     con = duckdb.connect(str(DB_PATH))
@@ -144,6 +155,9 @@ def main():
     
     p_evaluate = subparsers.add_parser("evaluate", help="Évaluation du modèle sauvegardé")
     p_evaluate.set_defaults(func=cmd_evaluate)
+    
+    p_api = subparsers.add_parser("serve", help="Démarrer l'api")
+    p_api.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()
     args.func(args)
