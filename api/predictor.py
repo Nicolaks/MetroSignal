@@ -92,7 +92,7 @@ class Predictor:
         d = dt.date().isoformat()
         return int(any(s <= d <= e for s, e in VACANCES_ZONE_C))
 
-    def build_features(self, station: str, dt: datetime) -> dict:
+    def build_features(self, station: str, dt: datetime, is_greve: int = 0) -> dict:
         """Construit le dictionnaire de features pour une station + datetime."""
         h = dt.hour
         dow = dt.weekday()
@@ -112,7 +112,7 @@ class Predictor:
             "is_weekend":           int(dow >= 5),
             "is_jour_ferie":        int(dt.date() in self.fr_holidays),
             "is_vacances_scolaires":self._is_vacances(dt),
-            "is_greve" : 0,
+            "is_greve" : is_greve,
             "is_covid": 0,
             # Météo : 0.0 par défaut (pas de forecast en temps réel ici)
             "temp": 15.0, "precip_mm": 0.0, "wind_kmh": 10.0, "weather_code": 0,
@@ -125,9 +125,9 @@ class Predictor:
         features.update(self._get_lag_features(station, dt))
         return features
 
-    def predict(self, station: str, dt: datetime) -> dict:
+    def predict(self, station: str, dt: datetime, is_greve: int = 0) -> dict:
         canonical = self._normalize_station(station)
-        features = self.build_features(canonical, dt)
+        features = self.build_features(canonical, dt, is_greve)
         
         df = pd.DataFrame([features])[FEATURE_COLS]
         z_score = float(self.model.predict(df)[0])

@@ -17,3 +17,4 @@ pyarrow
 nbformat
 kaleido
 joblib
+statsmodels

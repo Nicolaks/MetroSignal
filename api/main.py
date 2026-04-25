@@ -61,6 +61,7 @@ def health_check():
 def predict(
     station:  str = Query(..., example="Chatelet"),
     datetimeQ: str = Query(..., example="2025-06-13T17:00"),
+    is_greve: int = 0,
 ):
     """
     Prédit le taux de congestion pour une station à une date/heure donnée.
@@ -74,7 +75,7 @@ def predict(
         raise HTTPException(422, "Format datetime invalide. Attendu : YYYY-MM-DDTHH:MM")
 
     try:
-        result = predictor.predict(station, dt)
+        result = predictor.predict(station, dt, is_greve)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
