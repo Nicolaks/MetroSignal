@@ -7,7 +7,7 @@
 
 ## 1. Top 20 Stations — Volume Total de Validations
 
-![Top 20](../../outputs\img\eda\2_1_top20_stations.png)
+![Top 20](/outputs\img\eda\2_1_top20_stations.png)
 
 **Saint-Lazare domine largement** avec ~780M de validations sur 11 ans, presque le double de La Défense-Grande Arche (~544M). Les grandes gares terminus (Lyon, Nord, Est, Montparnasse) et les pôles d'échange majeurs (Châtelet-Les Halles) occupent les rangs suivants.
 
@@ -19,7 +19,7 @@
 
 ## 2. Validations Moyennes par Heure — Semaine vs Weekend
 
-![Validations Moyennes](../../outputs\img\eda\2_2_heures_pointe.png)
+![Validations Moyennes](/outputs\img\eda\2_2_heures_pointe.png)
 
 Le profil semaine présente le **double pic classique** à 8h (pic à ~840 validations/station) et 17h–18h (~760), avec un creux marqué à 9h–10h après le rush matinal. Le profil weekend est radicalement différent : pas de pic matinal, montée progressive jusqu'à un plateau entre 14h et 19h (~340 validations/station).
 
@@ -33,7 +33,7 @@ Le profil semaine présente le **double pic classique** à 8h (pic à ~840 valid
 
 ## 3. Heatmap Taux de Congestion — Top 30 Stations × Heure
 
-![Heatmap](../../outputs\img\eda\2_3_heatmap_station_heure.png)
+![Heatmap](/outputs\img\eda\2_3_heatmap_station_heure.png)
 
 La heatmap révèle une structure globalement homogène (teinte jaune/neutre = z-score ≈ 0) avec quelques anomalies localisées :
 
@@ -46,7 +46,7 @@ La majorité des stations présentent un profil stable, confirmant que le z-scor
 
 ## 4. Distribution du Taux de Congestion par Jour de la Semaine
 
-![Série Temporelle](../../outputs/img/eda/2_4_distribution_congestion.png)
+![Série Temporelle](/outputs/img/eda/2_4_distribution_congestion.png)
 
 Les jours ouvrés (Lundi–Vendredi) présentent une distribution **resserrée et symétrique** autour de 0, avec des moustaches atteignant ±2.5 z-scores. Le weekend (Samedi–Dimanche) se distingue par :
 
@@ -59,7 +59,7 @@ Les jours ouvrés (Lundi–Vendredi) présentent une distribution **resserrée e
 
 ## 5. Série Temporelle Globale — Validations Journalières 2015–2025
 
-![serie temporelle](../../outputs/img/eda/3_1_serie_temporelle.png)
+![serie temporelle](/outputs/img/eda/3_1_serie_temporelle.png)
 
 Quatre événements historiques sont clairement lisibles :
 
@@ -77,7 +77,7 @@ Quatre événements historiques sont clairement lisibles :
 
 ## 6. Nombre de Jours de Grève Détectés par Année
 
-![grève](../../outputs/img/eda/3_2_greves_par_an.png)
+![grève](/outputs/img/eda/3_2_greves_par_an.png)
 
 Après correction du flag `is_covid` :
 
@@ -92,7 +92,7 @@ Après correction du flag `is_covid` :
 
 ## 7. Indice de Fréquentation Mensuel (base 100 = 2019)
 
-![JO Paris 2024](../../outputs/img/eda/3_3_indice_frequentation.png)
+![JO Paris 2024](/outputs/img/eda/3_3_indice_frequentation.png)
 
 **2020 en jaune** : chute à 5–10 en avril (confinement strict), remontée progressive mais le niveau 2019 n'est jamais retrouvé sur l'année.
 
@@ -104,7 +104,7 @@ Après correction du flag `is_covid` :
 
 ## 8. JO Paris 2024 — Stations avec la Plus Forte Hausse vs Été 2023
 
-![JO Paris 2024](../../outputs/img/eda/3_4_jo_2024.png)
+![JO Paris 2024](/outputs/img/eda/3_4_jo_2024.png)
 
 Les stations les plus impactées sont cohérentes avec la localisation des sites olympiques :
 
@@ -118,7 +118,7 @@ L'impact est réel et mesurable sur 16 jours (26 juillet – 11 août 2024), ce 
 
 ## 9. Insight Clé : Météo vs Heure — Corrélation avec le Taux de Congestion
 
-![Insight Clé](../../outputs/img/eda/4_1_meteo_vs_heure.png)
+![Insight Clé](/outputs/img/eda/4_1_meteo_vs_heure.png)
 
 Toutes les stations apparaissent dans le quadrant "Météo > Heure" (axe X ≈ 0, axe Y > 0). Ce résultat à ~100% est un **artefact méthodologique**, pas un résultat substantiel.
 
@@ -135,7 +135,7 @@ L'hypothèse "certaines stations aériennes sont plus sensibles à la météo qu
 
 ## 10. Intensité des Précipitations vs Taux de Congestion
 
-![Intensité précipitations](../../outputs/img/eda/4_2_pluie_intensite.png)
+![Intensité précipitations](/outputs/img/eda/4_2_pluie_intensite.png)
 
 L'effet des précipitations sur le taux de congestion est **statistiquement faible à l'échelle globale** — les distributions "Sec", "Légère", "Modérée", "Forte" se superposent largement. La catégorie "Très forte" présente une variance réduite, probablement due à un faible nombre d'observations.
 
@@ -147,7 +147,7 @@ Le signal météo sera probablement plus fort au niveau station qu'au niveau ré
 
 ## 11. Impact de la Pluie par Heure — Δ Taux Congestion (Pluie − Sec)
 
-![Impact pluie par heure](../../outputs/img/eda/4_3_delta_pluie_heure.png)
+![Impact pluie par heure](/outputs/img/eda/4_3_delta_pluie_heure.png)
 
 La pluie a un **effet positif cohérent sur le trafic** (+0.01 à +0.07 z-score) : les gens prennent davantage le métro sous la pluie. L'effet est le plus fort entre 13h et 20h (+0.04 à +0.07).
 
@@ -159,7 +159,7 @@ La pluie a un **effet positif cohérent sur le trafic** (+0.01 à +0.07 z-score)
 
 ## 12. Top 30 Stations les Plus Imprévisibles (Variance du z-score)
 
-![Top 30 stations](../../outputs/img/eda/5_1_stations_imprev.png)
+![Top 30 stations](/outputs/img/eda/5_1_stations_imprev.png)
 
 **ROSNY-BOIS-PERRIER** en tête avec variance ≈ 1.0, suivi de stations de grande couronne (THIEUX-NANTOUILLET, BLANC-MESNIL, VOSGES, CDG 2-TGV). Ce résultat est **contre-intuitif** : on attendait les grandes gares parisiennes en tête.
 
@@ -171,7 +171,7 @@ La pluie a un **effet positif cohérent sur le trafic** (+0.01 à +0.07 z-score)
 
 ## 13. Volume vs Variance — Stations Stratégiques pour le ML
 
-![Volume vs Variance](../../outputs/img/eda/5_2_volume_vs_variance.png)
+![Volume vs Variance](/outputs/img/eda/5_2_volume_vs_variance.png)
 
 Le scatter révèle deux populations :
 
@@ -186,7 +186,7 @@ La corrélation volume/variance est **faiblement positive** contrairement à l'h
 
 ## 14. Profil Horaire : Station Imprévisible vs Station Stable (±1σ)
 
-![profil horaire station horaire](../../outputs/img/eda/5_3_profil_horaire_imprev.png)
+![profil horaire station horaire](/outputs/img/eda/5_3_profil_horaire_imprev.png)
 
 **ROSNY-BOIS-PERRIER** (imprévisible) : double pic classique 8h/17h avec une bande ±1σ très large (~±300 validations). Certains jours quasi-vides (grèves, COVID), d'autres très chargés (JO, événements) — la bande traduit cette variabilité extrême.
 
@@ -198,7 +198,7 @@ La corrélation volume/variance est **faiblement positive** contrairement à l'h
 
 ## 15. Corrélation Pearson des Features avec taux_congestion
 
-![Pearson](../../outputs/img/eda/6_1_feature_correlations.png)
+![Pearson](/outputs/img/eda/6_1_feature_correlations.png)
 
 **Features à signal fort** (en valeur absolue) :
 - `is_greve` : -0.35 — la grève réduit massivement le trafic
