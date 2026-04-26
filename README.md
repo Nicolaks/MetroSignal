@@ -45,14 +45,11 @@ MetroSignal est un projet portfolio de bout en bout couvrant les trois axes d'un
 
 ## Aperçu du dashboard
 
-> *Screenshots à venir*
-
-<!-- Une fois tes screenshots prêts, remplace ces lignes par :
 ![Heatmap réseau](docs/screenshots/heatmap.png)
 ![Carte géographique](docs/screenshots/carte.png)
 ![Grèves & Anomalies](docs/screenshots/greves.png)
 ![Performance modèle](docs/screenshots/modele.png)
--->
+
 
 Les 7 vues disponibles :
 
