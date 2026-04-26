@@ -147,8 +147,7 @@ fig = px.box(
     title="📊 Distribution du Taux de Congestion par Jour de la Semaine",
     labels={"jour_label": "", "taux_congestion": "Taux congestion (z-score)"},
     color="jour_label",
-    color_discrete_sequence=[COLOR_PRIMARY, COLOR_PRIMARY, COLOR_PRIMARY,
-                              COLOR_PRIMARY, COLOR_PRIMARY, COLOR_WARNING, COLOR_WARNING],
+    color_discrete_sequence=[COLOR_PRIMARY, COLOR_PRIMARY, COLOR_PRIMARY, COLOR_PRIMARY, COLOR_PRIMARY, COLOR_WARNING, COLOR_WARNING],
 )
 fig.update_layout(**LAYOUT_BASE, showlegend=False)
 save(fig, "2_4_distribution_congestion")
@@ -305,9 +304,6 @@ save(fig, "3_4_jo_2024", height=600)
 # 4. INSIGHT CLÉ — MÉTÉO VS HEURE
 # ══════════════════════════════════════════════════════════════════════════════
 logger.info("=== 4. Insight clé — Météo vs Heure ===")
-
-# Corrélation Spearman par station via DuckDB
-# On calcule corr(precip_mm, taux_congestion) et corr(heure, taux_congestion)
 station_corr = con.execute("""
     SELECT
         station,
@@ -421,100 +417,6 @@ fig.update_layout(
     yaxis_title="Δ z-score congestion",
 )
 save(fig, "4_3_delta_pluie_heure")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 5. STATIONS IMPRÉVISIBLES
-# ══════════════════════════════════════════════════════════════════════════════
-logger.info("=== 5. Stations imprévisibles ===")
-
-# ── 5.1 Top 30 variance ───────────────────────────────────────────────────────
-station_stats = con.execute("""
-    SELECT
-        station,
-        ANY_VALUE(variance_historique) AS variance,
-        ANY_VALUE(rang_station)        AS rang,
-        AVG(nb_vald_heure)             AS vol_moyen,
-        AVG(is_greve)                  AS taux_greve
-    FROM dataset_enrichi
-    GROUP BY station
-""").df().dropna(subset=["variance"])
-
-top_imprev = station_stats.nlargest(30, "variance")
-
-fig = px.bar(
-    top_imprev.sort_values("variance"),
-    x="variance", y="station", orientation="h",
-    title="🎲 Top 30 Stations les Plus Imprévisibles (Variance du z-score)",
-    labels={"variance": "Variance historique (z-score)", "station": ""},
-    color="variance", color_continuous_scale="Reds",
-)
-fig.update_layout(**LAYOUT_BASE, coloraxis_showscale=False)
-save(fig, "5_1_stations_imprev", height=700)
-
-# ── 5.2 Volume vs Variance ────────────────────────────────────────────────────
-fig = px.scatter(
-    station_stats,
-    x="vol_moyen", y="variance",
-    hover_name="station", color="taux_greve", size="vol_moyen",
-    title="📍 Volume vs Variance — Stations Stratégiques pour le ML",
-    labels={
-        "vol_moyen": "Volume moyen (validations/heure)",
-        "variance": "Variance historique (z-score)",
-        "taux_greve": "Taux jours grève",
-    },
-    color_continuous_scale="Reds",
-)
-fig.add_vline(x=station_stats["vol_moyen"].median(), line_dash="dot", line_color="gray")
-fig.add_hline(y=station_stats["variance"].median(), line_dash="dot", line_color="gray")
-fig.update_layout(**LAYOUT_BASE)
-save(fig, "5_2_volume_vs_variance", height=550)
-
-# ── 5.3 Profil horaire station imprévisible vs stable ─────────────────────────
-station_imprev = station_stats.nlargest(1, "variance")["station"].values[0]
-station_stable = station_stats.nsmallest(1, "variance")["station"].values[0]
-logger.info("Station imprévisible : %s | Stable : %s", station_imprev, station_stable)
-
-profils = con.execute(f"""
-    SELECT station, heure,
-           AVG(nb_vald_heure) AS mean_vald,
-           STDDEV(nb_vald_heure) AS std_vald
-    FROM dataset_enrichi
-    WHERE station IN (?, ?)
-    GROUP BY station, heure
-    ORDER BY station, heure
-""", [station_imprev, station_stable]).df()
-
-fig = go.Figure()
-FILLS = {
-    COLOR_ACCENT: "rgba(255, 107, 107, 0.15)",
-    COLOR_PRIMARY: "rgba(0, 212, 255, 0.15)",
-}
-
-for station, color in [(station_imprev, COLOR_ACCENT), (station_stable, COLOR_PRIMARY)]:
-    sub = profils[profils["station"] == station]
-    label = f"🎲 {station}" if station == station_imprev else f"📏 {station}"
-    fig.add_trace(go.Scatter(
-        x=sub["heure"], y=sub["mean_vald"],
-        mode="lines+markers", name=label,
-        line=dict(color=color, width=2),
-    ))
-    upper = sub["mean_vald"] + sub["std_vald"]
-    lower = sub["mean_vald"] - sub["std_vald"]
-    fig.add_trace(go.Scatter(
-        x=list(sub["heure"]) + list(sub["heure"])[::-1],
-        y=list(upper) + list(lower)[::-1],
-        fill="toself",
-        fillcolor=FILLS[color],  # ← rgba valide
-        line=dict(width=0), showlegend=False, hoverinfo="skip",
-    ))
-fig.update_layout(
-    **LAYOUT_BASE,
-    title="📊 Profil Horaire : Station Imprévisible vs Station Stable (±1σ)",
-    xaxis=dict(title="Heure", tickmode="linear", dtick=1, range=[-0.5, 23.5]),
-    yaxis_title="Validations/heure",
-)
-save(fig, "5_3_profil_horaire_imprev")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
