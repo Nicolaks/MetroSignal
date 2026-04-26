@@ -66,7 +66,6 @@ class Predictor:
         upper = name.strip().upper()
         if upper in self.station_meta:
             return upper
-        # Recherche partielle si pas de match exact
         matches = [s for s in self.known_stations if upper in s]
         if matches:
             return matches[0]
@@ -80,8 +79,7 @@ class Predictor:
                 WHERE station = ? AND date = ? AND heure = ?
                 LIMIT 1
             """, [station, target_dt.date(), target_dt.hour]).fetchone()
-            return row[0] if row else 0.0   # 0 = normal si pas de donnée
-
+            return row[0] if row else 0.0
         return {
             "lag_1h":  fetch(dt - timedelta(hours=1)),
             "lag_24h": fetch(dt - timedelta(hours=24)),
@@ -108,37 +106,29 @@ class Predictor:
             "mois_cos":   math.cos(2 * math.pi * month / 12),
             "semaine_sin":math.sin(2 * math.pi * week / 52),
             "semaine_cos":math.cos(2 * math.pi * week / 52),
-            # Calendrier
             "is_weekend":           int(dow >= 5),
             "is_jour_ferie":        int(dt.date() in self.fr_holidays),
             "is_vacances_scolaires":self._is_vacances(dt),
             "is_greve" : is_greve,
             "is_covid": 0,
-            # Météo : 0.0 par défaut (pas de forecast en temps réel ici)
             "temp": 15.0, "precip_mm": 0.0, "wind_kmh": 10.0, "weather_code": 0,
             "nb_events": 0,
-            # Stats station
-            "rang_station":        self.station_meta[station]["rang_station"],
-            "variance_historique": self.station_meta[station]["variance_historique"],    
+            "rang_station":        self.station_meta[station]["rang_station"],   
         }
-        
         features.update(self._get_lag_features(station, dt))
         return features
 
     def predict(self, station: str, dt: datetime, is_greve: int = 0) -> dict:
         canonical = self._normalize_station(station)
         features = self.build_features(canonical, dt, is_greve)
-        
         df = pd.DataFrame([features])[FEATURE_COLS]
         z_score = float(self.model.predict(df)[0])
         z_clipped = max(-5.0, min(5.0, z_score))
-        
         if z_clipped >= 2.0: label = "très chargé"
         elif z_clipped >= 0.5: label = "chargé"
         elif z_clipped <= -1.5: label = "très faible"
         elif z_clipped <= -0.5: label = "faible"
         else: label = "normal"
-        
         return {
             "station": canonical,
             "datetime": dt.isoformat(),

@@ -31,10 +31,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS : autorise le Streamlit (Phase 6) à appeler l'API depuis le navigateur
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # En prod : mettre l'URL exacte du Streamlit
+    allow_origins=["*"],
     allow_methods=["GET"],
 )
 
