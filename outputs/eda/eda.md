@@ -7,7 +7,7 @@
 
 ## 1. Top 20 Stations — Volume Total de Validations
 
-![Top 20](/outputs\img\eda\2_1_top20_stations.png)
+![Top 20](/outputs/img/eda/2_1_top20_stations.png)
 
 **Saint-Lazare domine largement** avec ~780M de validations sur 11 ans, presque le double de La Défense-Grande Arche (~544M). Les grandes gares terminus (Lyon, Nord, Est, Montparnasse) et les pôles d'échange majeurs (Châtelet-Les Halles) occupent les rangs suivants.
 
@@ -19,7 +19,7 @@
 
 ## 2. Validations Moyennes par Heure — Semaine vs Weekend
 
-![Validations Moyennes](/outputs\img\eda\2_2_heures_pointe.png)
+![Validations Moyennes](/outputs/img/eda/2_2_heures_pointe.png)
 
 Le profil semaine présente le **double pic classique** à 8h (pic à ~840 validations/station) et 17h–18h (~760), avec un creux marqué à 9h–10h après le rush matinal. Le profil weekend est radicalement différent : pas de pic matinal, montée progressive jusqu'à un plateau entre 14h et 19h (~340 validations/station).
 
