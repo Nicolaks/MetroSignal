@@ -3,7 +3,6 @@ import logging
 import holidays
 import numpy as np
 import pandas as pd
-
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -57,9 +56,9 @@ def build_jours_feries_set(years: list) -> set:
 
 def build_covid_set() -> set:
     confinements = [
-        ("2020-03-17", "2020-05-10"),  # Confinement 1
-        ("2020-10-30", "2020-12-14"),  # Confinement 2
-        ("2021-04-03", "2021-05-02"),  # Confinement 3
+        ("2020-03-17", "2020-05-10"),
+        ("2020-10-30", "2020-12-14"),
+        ("2021-04-03", "2021-05-02"), 
     ]
     covid = set()
     for debut, fin in confinements:
@@ -72,58 +71,43 @@ def build_covid_set() -> set:
 
 def compute_taux_congestion(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Calcul du taux de congestion ...")
-    
-    # Attente d'occupation normale sur la station à telle heure tel jours
     baseline = (
         df.groupby(["station", "jour_semaine", "heure"])["nb_vald_heure"]
         .mean()
         .rename("baseline_mean")
         .reset_index()
-    )
-    # Pareil mais avec l'écart-type pour mesurer la variablité du créneau dans le temps    
+    )  
     std = (
         df.groupby(["station", "jour_semaine", "heure"])["nb_vald_heure"]
         .std()
         .rename("baseline_std")
         .reset_index()
     )
-    
     df = df.merge(baseline, on=["station", "jour_semaine", "heure"], how="left")
     df = df.merge(std, on=["station", "jour_semaine", "heure"], how="left")
-    
-    # Taux de congestion : écart à la moyenne normalisé par l'écart-type
-    # Si std = 0 (station toujours au même niveau), taux = 0
-    # Si taux = +2 : station chargée
-    # Si taux = -2 : anormalement vide
     df["taux_congestion"] = (
         (df["nb_vald_heure"] - df["baseline_mean"])
         / df["baseline_std"].replace(0,1)
-    ).round(4)
-    
+    ).round(4) 
     n_avant = df["taux_congestion"].notna().sum()
     df["taux_congestion"] = df["taux_congestion"].where(
         df["baseline_mean"] >= 1.0, other=np.nan
     )
     n_apres = df["taux_congestion"].notna().sum()
     logger.info("Créneaux nocturnes invalidés : %d lignes -> taux_congestion=NaN", n_avant - n_apres)
-    
     df["taux_congestion"] = df["taux_congestion"].clip(-5,5)
-    
     logger.info("Taux de congestion calculé")
     return df
 
 def detect_greve(df: pd.DataFrame, covid_set: set) -> pd.DataFrame:
-    logger.info("Détection des jours de grève ...")
-    
+    logger.info("Détection des jours de grève ...")  
     df_hors_covid = df[~df["date"].isin(covid_set)]
-    
     total_stations = (
         df_hors_covid.groupby("date")["station"]
         .nunique()
         .rename("total_stations")
         .reset_index()
-    )
-    
+    ) 
     stations_affectees = (
         df_hors_covid[df_hors_covid["taux_congestion"] < -1.55]
         .groupby("date")["station"]
@@ -131,106 +115,82 @@ def detect_greve(df: pd.DataFrame, covid_set: set) -> pd.DataFrame:
         .rename("stations_affectees")
         .reset_index()
     )
-    
     greve = total_stations.merge(stations_affectees, on="date", how="left")
     greve["stations_affectees"] = greve["stations_affectees"].fillna(0)
     greve["pct_affectees"] = greve["stations_affectees"] / greve["total_stations"]
     greve["is_greve"] = (greve["pct_affectees"] >= 0.50).astype(int)
-    
     df = df.merge(greve[["date", "is_greve"]], on="date", how="left")
     df["is_greve"] = df["is_greve"].fillna(0).astype(int)
-    
     nb_jours_greve = greve["is_greve"].sum()
     logger.info("✅ %d jours de grève détectés", nb_jours_greve)
     return df
 
 def compute_station_stats(df: pd.DataFrame) -> pd.DataFrame:
-    logger.info("Calcul variance historique et rang station ...")
-    
-    station_stats = (
+    logger.info("Calcul des stats stations (Stabilité et Rang)...")
+    stats = (
         df.groupby("station")["taux_congestion"]
-        .agg(
-            variance_historique="var", # A quel point le trafic de cette station fluctue. Une station avec forte variance est imprévisible
-            volume_moyen="mean", # Le trafic moyen toutes heures confondues
-        )
+        .agg(["std", "mean"])
         .reset_index()
-        .dropna(subset={"volume_moyen"})
-    )
-    
-    station_stats["rang_station"] = (
-        station_stats["volume_moyen"]
+    ) 
+    stats["rang_station"] = (
+        stats["mean"]
         .rank(ascending=False, method="dense")
+        .fillna(999)
         .astype(int)
     )
-    
-    df = df.merge(station_stats[["station", "variance_historique", "rang_station"]], on="station", how="left")
-    logger.info("Stats station calculées")
+    df = df.merge(
+        stats[["station", "rang_station"]], 
+        on="station", 
+        how="left"
+    )
+    logger.info(f"Stats calculées. CV moyen")
     return df
 
 def join_weather(df: pd.DataFrame, con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     logger.info("Jointure avec weather ...")
-    
     weather = con.execute("SELECT * FROM weather").df()
     weather["date"] = pd.to_datetime(weather["date"]).dt.date
-    
     df = df.merge(weather, on=["date", "heure"], how="left")
     logger.info("Jointure weather OK : %d lignes", len(df))
     return df
 
 def join_events(df: pd.DataFrame, con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     logger.info("Jointure avec events ...")
-    
     events = con.execute("SELECT date, heure_debut, COUNT(*) as nb_events FROM events GROUP BY date, heure_debut").df()
     events["date"] = pd.to_datetime(events["date"]).dt.date
     events = events.rename(columns={"heure_debut": "heure"})
-    
     df = df.merge(events, on=["date", "heure"], how="left")
     df["nb_events"] = df["nb_events"].fillna(0).astype(int)
-    
     logger.info("Jointure events OK : %d lignes", len(df))
     return df
 
 def add_calendar_features(df: pd.DataFrame, vacances_set: set, feries_set: set, covid_set: set) -> pd.DataFrame:
     logger.info("Ajout features calendrier ...")
-    
     df["is_jour_ferie"] = df["date"].apply(lambda d: int(d in feries_set))
     df["is_vacances_scolaires"] = df["date"].apply(lambda d: int(d in vacances_set))
     df["is_covid"] = df["date"].apply(lambda d: int(d in covid_set))
-    
     logger.info("Features calendrier ajoutées")
     return df
 
 def add_cyclic_features(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Ajout des features cycliques sin/cos ...")
-    
-    # Heure : période 24h
     df["heure_sin"] = np.sin(2 * np.pi * df["heure"] / 24)
     df["heure_cos"] = np.cos(2 * np.pi * df["heure"] / 24)
-    
-    # Jour de la semaine : période 7
     df["jour_sin"] = np.sin(2 * np.pi * df["jour_semaine"] / 7)
     df["jour_cos"] = np.cos(2 * np.pi * df["jour_semaine"]/ 7)
-    
-    # Semaine de l'année : période 52
     df["semaine_sin"] = np.sin(2 * np.pi * df["semaine_annee"] / 52)
     df["semaine_cos"] = np.cos(2 * np.pi * df["semaine_annee"] / 52)
-    
-    # Mois : période 12
     df["mois_sin"] = np.sin(2 * np.pi * df["mois"] / 12)
     df["mois_cos"] = np.cos(2 * np.pi * df["mois"] / 12)
-    
     logger.info("Features cycliques ajoutées : heure, jour, semaine, mois")
     return df
 
 def run(db_path: Path = DB_PATH) -> pd.DataFrame:
     logger.info("=== Démarrage transform.py ===")
-    
     con = duckdb.connect(str(db_path))
-    
     logger.info("Chargement de la table validations ...")
     df = con.execute("SELECT * FROM validations").df()
     df["date"] = pd.to_datetime(df["date"]).dt.date
-    
     logger.info("Normalisation des noms de stations ...")
     nom_canonique = (
         df.groupby("code_arret")["station"]
@@ -242,7 +202,6 @@ def run(db_path: Path = DB_PATH) -> pd.DataFrame:
     df["station"] = df["station_canon"]
     df = df.drop(columns=["station_canon"])
     logger.info("Stations normalisées : %d noms canoniques", df["station"].nunique())
-    
     logger.info("Agrégation par (station, date, heure) ...")
     df = (
         df.groupby(
@@ -252,15 +211,11 @@ def run(db_path: Path = DB_PATH) -> pd.DataFrame:
         )
         .agg(nb_vald_heure=("nb_vald_heure", "sum"))
     )
-    logger.info("Après agrégation : %d lignes, %d stations",
-                len(df), df["station"].nunique())
-
-    
+    logger.info("Après agrégation : %d lignes, %d stations", len(df), df["station"].nunique())
     years = list(range(2015, 2026))
     vacances_set = build_vacances_set(ZONES_VACANCES)
     feries_set = build_jours_feries_set(years)
     covid_set = build_covid_set()
-    
     df = compute_taux_congestion(df)
     df = detect_greve(df, covid_set)
     df = compute_station_stats(df)
@@ -268,15 +223,12 @@ def run(db_path: Path = DB_PATH) -> pd.DataFrame:
     df = join_events(df, con)
     df = add_calendar_features(df, vacances_set, feries_set, covid_set)
     df = add_cyclic_features(df)
-    
     logger.info("Sauvergarde dans DuckDB -> table dataset_enrichi ...")
     con.execute("DROP TABLE IF EXISTS dataset_enrichi")
     con.execute("CREATE TABLE dataset_enrichi AS SELECT * FROM df")
-    
     count = con.execute("SELECT COUNT(*) FROM dataset_enrichi").fetchone()[0]
     cols = con.execute("DESCRIBE dataset_enrichi").df()["column_name"].tolist()
     con.close()
-    
     logger.info("✅ dataset_enrichi : %d lignes | colonnes : %s", count, cols)
     return df
 
