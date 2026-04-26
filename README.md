@@ -15,6 +15,7 @@
 
 - [Aperçu](#aperçu)
 - [Architecture](#architecture)
+- [Résultats de l'EDA](/outputs/eda/eda.md)
 - [Résultats du modèle](#résultats-du-modèle)
 - [Stack technique](#stack-technique)
 - [Structure du projet](#structure-du-projet)
