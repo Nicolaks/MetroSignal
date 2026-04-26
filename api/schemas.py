@@ -11,7 +11,6 @@ class PredictionResponse(BaseModel):
 class StationInfo(BaseModel):
     name: str
     rang: Optional[int]
-    variance: Optional[float]
     
 class HistoryPoint(BaseModel):
     date: str

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from api.predictor import Predictor
 from api.schemas import PredictionResponse, HistoryResponse, HealthResponse, StationInfo
 
-MODEL_PATH = "ml\models\lgbm_metrosignal.pkl"
+MODEL_PATH = "ml/models/lgbm_metrosignal.pkl"
 DB_PATH = "data/warehouse.duckdb"
 
 predictor: Predictor = None
@@ -92,7 +92,6 @@ def list_stations(limit: int = Query(50, ge=1, le=500)):
         stations.append({
             "name": name,
             "rang": meta.get("rang_station"),
-            "variance": round(meta.get("variance_historique", 0), 3),
         })
     return stations
 
@@ -110,7 +109,7 @@ def get_history(
         raise HTTPException(404, str(e))
 
     rows = predictor.con.execute("""
-        SELECT date, heure, nb_vald_heure, taux_congestion
+        SELECT date, heure, nb_vald_heure, taux_congestion, heure,
         FROM dataset_enrichi
         WHERE station = ?
           AND date BETWEEN ? AND ?

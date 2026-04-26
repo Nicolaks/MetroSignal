@@ -34,7 +34,7 @@ VACANCES_ZONE_C = [
 
 FEATURE_COLS = [
     "heure_sin", "heure_cos",
-    "jour_sin", "jour_cos", "semaine_cos", "semaine_sin", "variance_historique",
+    "jour_sin", "jour_cos", "semaine_cos", "semaine_sin",
     "mois_sin", "mois_cos",
     "is_weekend", "is_jour_ferie", "is_vacances_scolaires",
     "is_greve", "is_covid",
@@ -53,9 +53,9 @@ class Predictor:
         self._load_station_meta()
         
     def _load_station_meta(self):
-        """Charge rang + variance de toutes les stations en mémoire."""
+        """Charge rang de toutes les stations en mémoire."""
         df = self.con.execute("""
-            SELECT DISTINCT station, rang_station, variance_historique
+            SELECT DISTINCT station, rang_station,
             FROM dataset_enrichi
         """).df()
         self.station_meta = df.set_index("station").to_dict("index")
