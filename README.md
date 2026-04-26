@@ -48,7 +48,11 @@ MetroSignal est un projet portfolio de bout en bout couvrant les trois axes d'un
 ![Heatmap réseau](docs/screenshots/heatmap.png)
 ![Carte géographique](docs/screenshots/carte.png)
 ![Grèves & Anomalies](docs/screenshots/greves.png)
+![Top stations Grèves](docs/screenshots/stationsgreve.png)
 ![Performance modèle](docs/screenshots/modele.png)
+![Top stations à Prédire](docs/screenshots/top.png)
+![Pire stations à Prédire](docs/screenshots/pire.png)
+![MAE vs RMSE](docs/screenshots/maermse.png)
 
 
 Les 7 vues disponibles :
