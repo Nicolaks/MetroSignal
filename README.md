@@ -1,5 +1,7 @@
 # 🚇 MetroSignal
 
+![Accueil MetroSignal](docs/screenshots/accueil.png)
+
 > Prédiction du taux de congestion (z-score) IDFM par station et par heure. Pipeline Data Engineering → Machine Learning → API REST → Dashboard interactif
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
