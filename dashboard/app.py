@@ -25,7 +25,6 @@ COLORS = {
     "muted":   "#718096",
 }
 
-#Config page
 st.set_page_config(
     page_title="MetroSignal",
     page_icon="🚇",
@@ -52,8 +51,6 @@ st.markdown(f"""
         </style>
         """, unsafe_allow_html=True)
 
-#Connexion
-
 @st.cache_resource
 def get_connection():
     return duckdb.connect(DB_PATH, read_only=True)
@@ -75,9 +72,7 @@ def apply_dark_theme(fig: go.Figure, title: str = "") -> go.Figure:
         legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=COLORS["border"]),
         margin=dict(l=40, r=20, t=50, b=40),        
     )
-    return fig
-
-#Données de base 
+    return fig 
 
 @st.cache_data(ttl=3600)
 def get_stations() -> list:
@@ -88,18 +83,14 @@ def get_stations() -> list:
 def get_years() -> list:
     return query("SELECT DISTINCT annee FROM dataset_enrichi ORDER BY annee")["annee"].tolist()
 
-#Sidebar
-
 with st.sidebar:
     st.markdown("## 🚇 MetroSignal")
     st.markdown("*Analyse du trafic IDFM rail 2015–2025*")
     st.divider()
-    
     view = st.radio("Vue", [
         "🗺️ Heatmap réseau",
         "🌧️ Météo & Trafic",
         "🎭 Événements & Pics",
-        "📊 Stations imprévisibles",
         "🔮 Prédiction ML",
         "🌍 Carte géographique",
         "🚨 Grèves & Anomalies",
@@ -140,7 +131,7 @@ if view == "🗺️ Heatmap réseau":
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Stations actives",        f"{int(m.nb_stations)}")
     c2.metric("Validations totales",     f"{int(m.total_validations):,}".replace(",", " "))
-    c3.metric("Congestion moyenne",      f"{m.congestion_moyenne:.3f} σ")
+    c3.metric("Congestion moyenne historique [2015-2024]",      f"{m.congestion_moyenne:.3f} σ")
     c4.metric("Jours de grève détectés", f"{int(m.jours_greve)}")
     st.divider()
 
@@ -226,7 +217,6 @@ if view == "🗺️ Heatmap réseau":
         apply_dark_theme(fig_p, f"Profil horaire — {selected_station} ({selected_year})")
         fig_p.update_layout(xaxis_title="Heure", yaxis_title="Congestion (z-score)")
         st.plotly_chart(fig_p, use_container_width=True)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VUE 2 — MÉTÉO & TRAFIC
@@ -359,59 +349,6 @@ elif view == "🎭 Événements & Pics":
         top10.columns = ["Date","Nb événements","Congestion (σ)","Grève"]
         st.dataframe(top10, use_container_width=True, hide_index=True)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# VUE 4 — STATIONS IMPRÉVISIBLES
-# ─────────────────────────────────────────────────────────────────────────────
-
-elif view == "📊 Stations imprévisibles":
-    st.title("📊 Stations imprévisibles")
-    st.markdown("Variance du z-score de congestion sur 2015–2025.")
-
-    @st.cache_data(ttl=3600)
-    def get_variance_ranking():
-        return query("""
-            SELECT station, ROUND(AVG(variance_historique), 4) AS variance_moy,
-                   ROUND(AVG(nb_vald_heure), 1) AS volume_moyen, rang_station
-            FROM dataset_enrichi WHERE taux_congestion IS NOT NULL
-            GROUP BY station, rang_station ORDER BY variance_moy DESC
-        """)
-
-    df_var = get_variance_ranking()
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        n_st     = st.slider("Stations à afficher", 10, 50, 25)
-        color_by = st.radio("Couleur", ["variance_moy", "volume_moyen"])
-    with col1:
-        fig_bar = px.bar(df_var.head(n_st).sort_values("variance_moy"),
-                         x="variance_moy", y="station", orientation="h", color=color_by,
-                         color_continuous_scale=["#1a237e","#00d4ff","#ff6b6b"],
-                         labels={"variance_moy":"Variance","station":""},
-                         hover_data=["rang_station","volume_moyen"])
-        apply_dark_theme(fig_bar, f"Top {n_st} stations imprévisibles")
-        fig_bar.update_coloraxes(colorbar=dict(tickfont=dict(color=COLORS["muted"]), 
-                                               title=dict(font=dict(color=COLORS["muted"])) # Structure correcte
-                                               ))
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-    st.divider()
-    fig_sc = px.scatter(df_var, x="volume_moyen", y="variance_moy",
-                        color="variance_moy", color_continuous_scale=["#1a237e","#00d4ff","#ff6b6b"],
-                        labels={"volume_moyen":"Volume (val/h)","variance_moy":"Variance"})
-    fig_sc.add_vline(x=df_var["volume_moyen"].median(), line_dash="dash",
-                     line_color=COLORS["muted"], opacity=0.5)
-    fig_sc.add_hline(y=df_var["variance_moy"].median(), line_dash="dash",
-                     line_color=COLORS["muted"], opacity=0.5)
-    apply_dark_theme(fig_sc, "Volume vs Variance — Quadrant ML")
-    fig_sc.update_coloraxes(showscale=False)
-    st.plotly_chart(fig_sc, use_container_width=True)
-
-    with st.expander("📋 Table complète"):
-        st.dataframe(df_var, use_container_width=True)
-        st.download_button("⬇️ CSV", df_var.to_csv(index=False),
-                           "stations_variance.csv", "text/csv")
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # VUE 5 — PRÉDICTION ML (API FastAPI)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -446,17 +383,17 @@ elif view == "🔮 Prédiction ML":
             try:
                 resp = requests.get(f"{API_URL}/predict",
                                     params={"station": pred_station,
-                                            "datetime": f"{pred_date}T{pred_hour:02d}:00:00",
+                                            "datetimeQ": f"{pred_date}T{pred_hour:02d}:00:00",
                                             "is_greve": int(manual_strike)},
                                     timeout=10)
                 if resp.status_code == 200:
-                    z = resp.json().get("taux_congestion_predit", 0)
+                    z = resp.json().get("taux_congestion", 0)
                     fig_g = go.Figure(go.Indicator(
                         mode="gauge+number", value=z,
                         title={"text": "Congestion prédite (σ)", "font": {"color": COLORS["accent"]}},
                         gauge={"axis": {"range": [-3, 3]},
                                "bar": {"color": COLORS["accent"]},
-                               "bgcolor": COLORS["surface"],
+                               "bgcolor": "rgba(0,0,0,0)",
                                "steps": [{"range":[-3,-1.5],"color":"#1a237e"},
                                          {"range":[-1.5,1.5],"color":"#2d3748"},
                                          {"range":[1.5,3],"color":"#7f1d1d"}]},
@@ -464,7 +401,7 @@ elif view == "🔮 Prédiction ML":
                     ))
                     fig_g.update_layout(paper_bgcolor="rgba(0,0,0,0)",
                                         font=dict(color=COLORS["text"]),
-                                        height=280, margin=dict(l=20,r=20,t=30,b=10))
+                                        height=280, margin=dict(l=30,r=30,t=50,b=20))
                     st.plotly_chart(fig_g, use_container_width=True)
                     for lo, hi, msg in [(-3,-1.5,"🟦 Trafic très faible"),(-1.5,-0.5,"🟩 En dessous normale"),
                                         (-0.5,0.5,"⬜ Normal"),(0.5,1.5,"🟧 Au-dessus normale"),(1.5,3,"🟥 Très chargé")]:
@@ -497,7 +434,6 @@ elif view == "🌍 Carte géographique":
         coords      = df["Geo Point"].str.split(",", expand=True)
         df["lat"]   = pd.to_numeric(coords[0].str.strip(), errors="coerce")
         df["lon"]   = pd.to_numeric(coords[1].str.strip(), errors="coerce")
-        # Clé de jointure : upper + strip + suppression accents
         df["station_key"] = (df["nom_ZdC"].str.upper().str.strip()
                              .str.normalize("NFKD")
                              .str.encode("ascii", errors="ignore").str.decode("ascii"))
@@ -509,7 +445,7 @@ elif view == "🌍 Carte géographique":
     @st.cache_data(ttl=3600)
     def get_station_metrics_for_map(year):
         df = query("""
-            SELECT station, ROUND(AVG(variance_historique),4) AS variance_moy,
+            SELECT station,
                    ROUND(AVG(nb_vald_heure),1) AS volume_moyen, rang_station
             FROM dataset_enrichi WHERE annee = ? AND taux_congestion IS NOT NULL
             GROUP BY station, rang_station
@@ -550,13 +486,13 @@ elif view == "🌍 Carte géographique":
 
     col_ctrl, col_map = st.columns([1, 4])
     with col_ctrl:
-        color_metric = st.radio("Couleur", ["Variance","MAE modèle","Volume"])
+        color_metric = st.radio("Couleur", ["MAE modèle","Volume"])
         map_style    = st.selectbox("Fond de carte",
                                    ["carto-darkmatter","open-street-map","carto-positron"])
         min_vol      = st.slider("Volume minimum", 0, 500, 50)
 
-    color_col = {"Variance":"variance_moy","MAE modèle":"mae","Volume":"volume_moyen"}[color_metric]
-    color_lbl = {"variance_moy":"Variance z-score","mae":"MAE (σ)","volume_moyen":"Validations/h"}
+    color_col = {"MAE modèle":"mae","Volume":"volume_moyen"}[color_metric]
+    color_lbl = {"mae":"MAE (σ)","volume_moyen":"Validations/h"}
 
     df_f = df_map[df_map["volume_moyen"] >= min_vol].copy()
     sv   = df_f["volume_moyen"].fillna(df_f["volume_moyen"].median())
@@ -572,7 +508,7 @@ elif view == "🌍 Carte géographique":
                 color_continuous_scale=["#1a237e","#00b4d8","#ffffff","#ff6b6b","#b71c1c"],
                 hover_name="station",
                 hover_data={"lat":False,"lon":False,"_size":False,
-                            "variance_moy":":.3f","volume_moyen":":.0f",
+                            "volume_moyen":":.0f",
                             "mae":":.3f","rang_station":True,"res_com":True},
                 mapbox_style=map_style, zoom=10,
                 center={"lat":48.8566,"lon":2.3522}, height=600,
@@ -593,8 +529,8 @@ elif view == "🌍 Carte géographique":
 
         st.subheader(f"Top 10 — {color_metric}")
         top10 = (df_f.dropna(subset=[color_col]).nlargest(10, color_col)
-                 [["station","variance_moy","volume_moyen","mae","rang_station","res_com"]])
-        top10.columns = ["Station","Variance","Volume moy.","MAE","Rang","Ligne"]
+                 [["station","volume_moyen","mae","rang_station","res_com"]])
+        top10.columns = ["Station","Volume moy.","MAE","Rang","Ligne"]
         st.dataframe(top10, use_container_width=True, hide_index=True)
 
 
