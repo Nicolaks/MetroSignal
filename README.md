@@ -40,7 +40,7 @@ MetroSignal est un projet portfolio de bout en bout couvrant les trois axes d'un
 
 **Dataset** : 66 millions de lignes couvrant ~730 stations IDFM sur la période **2015–2025**, enrichies avec la météo horaire (Open-Meteo) et les événements culturels parisiens (OpenAgenda).
 
-**Métrique cible** : taux de congestion exprimé en **z-score** par créneau (station, jour de la semaine, heure) — directement interprétable et comparable entre toutes les stations quelle que soit leur taille.
+**Métrique cible** : taux de congestion exprimé en **z-score** par créneau (station, jour de la semaine, heure) directement interprétable et comparable entre toutes les stations quelle que soit leur taille.
 
 ---
 
@@ -111,7 +111,7 @@ Les 7 vues disponibles :
 
 ## Résultats du modèle
 
-Modèle : **LightGBM** — 200 itérations, `learning_rate=0.05`, `num_leaves=127`
+Modèle : **LightGBM**: 200 itérations, `learning_rate=0.05`, `num_leaves=127`
 
 Split temporel strict : **train 2015–2023** → **test 2024–2025** (pas de fuite temporelle)
 
@@ -218,9 +218,9 @@ OPENAGENDA_PUBLIC_KEY=ta_cle_api
 
 ### Téléchargement des données IDFM
 
-Télécharge les fichiers de validations et profils horaires sur
+Téléchargez les fichiers de validations et profils horaires sur
 [data.iledefrance-mobilites.fr](https://data.iledefrance-mobilites.fr)
-et place-les dans `data/raw/` en respectant la structure `data-rf-YYYY/`.
+et placez les dans `data/raw/` en respectant la structure `data-rf-YYYY/`.
 
 ---
 
@@ -311,15 +311,15 @@ GET /history/{station}?start=2024-01-01&end=2024-01-31
 Ces limitations sont documentées volontairement.
 
 **Reconstruction horaire approximative**
-Les fichiers IDFM ne fournissent que des totaux journaliers. La granularité horaire est reconstruite en multipliant le total par un profil de distribution (`PROFIL_FER`) selon le type de jour. C'est une estimation — le profil horaire réel peut varier selon les événements de la journée.
+Les fichiers IDFM ne fournissent que des totaux journaliers. La granularité horaire est reconstruite en multipliant le total par un profil de distribution (`PROFIL_FER`) selon le type de jour. C'est une estimation, le profil horaire réel peut varier selon les événements de la journée.
 
-**Détection de grèves — faux négatifs COVID**
-Le flag `is_greve` repose sur un seuil de baisse généralisée du z-score (≥50% des stations sous -1.55σ). En pratique, le signal COVID 2020 ne déclenche quasiment pas ce flag : sur les 60 jours `is_greve=1` détectés en 2020, 59 se situent hors des périodes de confinement. Les confinements produisent une baisse très profonde et très uniforme du trafic, ce qui fait chuter la baseline de référence et comprime les z-scores — le seuil relatif n'est donc pas franchi. Un flag `is_covid` dédié (déjà présent dans `dataset_enrichi`) permet de distinguer les deux phénomènes.
+**Détection de grèves - faux négatifs COVID**
+Le flag `is_greve` repose sur un seuil de baisse généralisée du z-score (≥50% des stations sous -1.55σ). En pratique, le signal COVID 2020 ne déclenche quasiment pas ce flag : sur les 60 jours `is_greve=1` détectés en 2020, 59 se situent hors des périodes de confinement. Les confinements produisent une baisse très profonde et très uniforme du trafic, ce qui fait chuter la baseline de référence et comprime les z-scores, le seuil relatif n'est donc pas franchi. Un flag `is_covid` dédié (déjà présent dans `dataset_enrichi`) permet de distinguer les deux phénomènes.
 
 **Noms de stations**
 La jointure entre les fichiers IDFM (noms en majuscules, parfois abrégés) et le CSV géographique repose sur une normalisation textuelle. Un pourcentage de stations (~5-10%) peut ne pas être géolocalisé automatiquement en raison de divergences de nommage persistantes entre les sources.
 
-**La Défense — volume surestimé**
+**La Défense - volume surestimé**
 La station `LA DEFENSE-GRANDE ARCHE` agrège plusieurs `code_arret` correspondant à des lignes distinctes (RER A, Métro 1, Transilien L). Son volume total est artificiellement élevé par rapport aux stations mono-ligne et doit être interprété avec précaution dans les classements.
 
 **Pic de validations fin 2024**
@@ -327,6 +327,11 @@ Un spike anormal (~10–14M validations/jour vs ~6–8M habituellement) est visi
 
 **Modèle global vs modèles par station**
 Un unique modèle LightGBM est entraîné sur toutes les stations. Les pires performances (MAE ~0.95) concernent des stations de grande couronne Transilien à flux très irrégulier. Des modèles individuels par station ou par groupe de stations amélioreraient probablement les résultats sur ces cas difficiles.
+
+**Performances du modèle**
+Le modèle est contraint par les données historiques sur lesquelles il repose (2015–2025) et ne reflète pas spontanément l’augmentation progressive du trafic. Ainsi, un dimanche typique en 2026 sera probablement plus chargé que la moyenne des dimanches observés entre 2015 et 2025, en raison d’une croissance organique du trafic.
+Pour mieux tenir compte de cette évolution, l’utilisation d’un z-score glissant calculé à partir des données les plus récentes (semaines, mois précédents), plutôt que sur plusieurs années permettrait de capter cette dynamique et d’en améliorer l’interprétation. Il s’agit d’une piste d’amélioration pertinente.
+
 
 ---
 
